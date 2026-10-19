@@ -2,7 +2,7 @@
 
 No blanket open-source license is assigned to the recovered Mars Hotel source. Publication provides the code for preservation, review and recovery; it does not grant rights beyond those held by the respective copyright owners. The Pirates BBS 1.9 / Eagles heritage is identified as provenance and must not be read as permission to relicense inherited work.
 
-The public tree contains source, configuration, text artwork and tests. It excludes registered LORD files and keys, Zork story data, TradeWars game data, production databases, extracted container files and the private deployed-door image.
+The public tree contains source, configuration, text artwork, tests, the unmodified LORD 4.02 shareware archive and the public LORD registration identified by the operator. It excludes Zork story data, TradeWars game data, production databases, account and message data, extracted container files and the private deployed-door image.
 
 Third-party runtime components keep their own notices:
 
@@ -20,9 +20,10 @@ Third-party runtime components keep their own notices:
 | FDPP | GPL-3.0-or-later |
 | comcom64 | GPL-3.0-or-later |
 | Frotz | GPL-2.0-or-later |
+| LORD 4.02 | Copyright Robinson Technologies / Metropolis, Inc.; the included `LORD.DOC` permits sharing the complete unmodified shareware archive |
 
 Base distribution packages carry their notices in the resulting images. Operators distributing images must preserve those notices and meet corresponding-source requirements.
 
-Zork, LORD and TradeWars content must be obtained and licensed by each operator. The repository only supplies recovered integration code and generic wrapper/configuration files. Do not publish game archives, registration files or keys from an installed system.
+Zork content must be obtained and licensed by each operator. TradeWars was not installed on The Mars Hotel and its game data is not published. The LORD archive is preserved byte-for-byte from the public Nightfall Games download. The registration was recovered from the deployed configuration, independently validated against a fresh LORD 4.02 world, and included on the operator's explicit statement that it is public. No external publication page for the five numbers was recovered, so downstream redistributors should retain this provenance statement and make their own rights assessment.
 
 The original project did not contain a project-wide license file. A future license grant should be made only by parties able to establish ownership of the recovered first-party and inherited material.

@@ -167,11 +167,13 @@ class DoorAuthority:
         self.lock = threading.Lock()
         self.nodes: dict[str, set[int]] = {game: set() for game in DOORS}
         self.node_locks: dict[tuple[str, int], int] = {}
-        self._seed("lord")
-        self._seed("tradewars")
-        (self.root / "zork").mkdir(mode=0o700, exist_ok=True)
+        for game in ("lord", "tradewars"):
+            if game in self.enabled:
+                self._seed(game)
+        if "zork" in self.enabled:
+            (self.root / "zork").mkdir(mode=0o700, exist_ok=True)
         self._initialize_legacy_worlds()
-        if lord_registration_file:
+        if lord_registration_file and "lord" in self.enabled:
             self._register_lord(lord_registration_file)
 
     def _seed(self, game: str) -> None:
@@ -435,7 +437,7 @@ class DoorAuthority:
         """Create fresh shareware worlds without user input on first boot."""
         lord_dir = self.root / "lord/home/.dosemu/drive_c/doors/lord"
         lord_marker = self.root / "lord/.initialized"
-        if not lord_marker.exists():
+        if "lord" in self.enabled and not lord_marker.exists():
             transcript = self._run_setup(
                 "lord", "LORDCFG.EXE",
                 [(b"NEW LORD.DAT", b"a"), (b"LORD CONFIGURE", b"q")])
@@ -449,7 +451,7 @@ class DoorAuthority:
 
         tw_dir = self.root / "tradewars/home/.dosemu/drive_c/doors/tw"
         tw_marker = self.root / "tradewars/.initialized"
-        if not tw_marker.exists():
+        if "tradewars" in self.enabled and not tw_marker.exists():
             transcript = self._run_setup(
                 "tradewars", "BIGBANG.EXE",
                 [(b"Have you REGISTERED TW2002?", b"n"),
@@ -648,7 +650,7 @@ def main() -> None:
     parser.add_argument("--socket", required=True)
     parser.add_argument("--play-socket", required=True)
     parser.add_argument("--session-socket", required=True)
-    parser.add_argument("--enabled-doors", default=",".join(DOORS))
+    parser.add_argument("--enabled-doors", default="zork,lord")
     parser.add_argument("--lord-registration-file")
     parser.add_argument("--lord-nodes", type=int, default=4)
     args = parser.parse_args()

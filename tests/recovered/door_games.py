@@ -10,6 +10,7 @@ import tempfile
 import threading
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from marsv2.door_client import DoorError, MAX_FRAME, recv_frame, send_frame
 from marsv2.doord import (
@@ -78,6 +79,23 @@ class DoorProtocolTests(unittest.TestCase):
                 stream.write("1 2 3 4\n")
             with self.assertRaises(RuntimeError):
                 _read_lord_registration(path)
+
+    def test_disabled_dos_templates_are_not_seeded_or_initialized(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory, "data")
+            templates = Path(directory, "templates")
+            Path(templates, "lord").mkdir(parents=True)
+            Path(templates, "tradewars").mkdir()
+            with mock.patch.object(DoorAuthority, "_initialize_legacy_worlds"):
+                DoorAuthority(
+                    str(root), str(templates), "/unused/session.sock", {"lord"})
+            self.assertTrue(Path(root, "lord").is_dir())
+            self.assertFalse(Path(root, "tradewars").exists())
+
+            disabled = DoorAuthority.__new__(DoorAuthority)
+            disabled.root = Path(directory, "empty")
+            disabled.enabled = set()
+            disabled._initialize_legacy_worlds()
 
     def test_door_sys_is_52_lines_and_contains_no_secret(self) -> None:
         value = _door_sys("pilot", "Test\x1b[31m\r\nPilot", 1)

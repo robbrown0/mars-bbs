@@ -14,7 +14,7 @@ The canonical package contains 37 Python modules. The selected set matches the l
 - Oregon Trail, WOPR, Maze, Global Thermonuclear War and chess
 - information collectors for weather, news, solar/space, amateur-radio-related feeds, earthquakes, ISS/satellites, television and movies
 - optional market collector with a separately supplied API key
-- Zork, LORD and TradeWars door authority/integration code
+- Zork and registered LORD door operation; dormant TradeWars integration residue is preserved as recovered source only
 - Docker Compose topology, fresh-volume bootstrap, secrets initialization and isolated health checks
 
 Stockfish 19 was recovered exactly: the official release binary hash equals the file in the deployed game container. The build verifies the official archive checksum and carries its license, authors and full source.
@@ -24,10 +24,11 @@ The exact dosemu2 build installed on October 16 was superseded in the rolling PP
 ## Incomplete or unavailable
 
 - the custom deployed OpenSSH 10.6p1 build inputs were not present; Debian OpenSSH 10.0p1 is the tested compatible replacement
-- Zork data, registered LORD files/keys and TradeWars data are private/licensed and excluded; only Zork and LORD were enabled in production, and full interactive door play was not independently reproduced
+- Zork data remains excluded and full interactive Zork play was not independently reproduced
+- TradeWars was not installed or offered; its dormant integration branch and image-template residue are not presented as an operational Mars Hotel feature
 - market data is unavailable without an operator API key
 - the stopped production external-IRC container used maintenance-only mode; recovered native-chat bridge behavior passed local fixtures but was not connected to a real third-party network
 
 ## Recovery decisions
 
-Fresh deployment files contain no Unraid paths, external production volumes or fixed production container names. Only SSH is published. All tests used isolated resources. Production application containers were inspected and copied from without stop, restart, replacement or configuration change. No private database, account, message, key or credential is part of the public tree.
+Fresh deployment files contain no Unraid paths, external production volumes or fixed production container names. Only SSH is published. All tests used isolated resources. Production application containers were inspected and copied from without stop, restart, replacement or configuration change. No private database, account, message or runtime credential is part of the public tree. The included LORD registration is deliberately public by operator attestation and is documented separately from runtime secrets.

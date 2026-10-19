@@ -802,7 +802,7 @@
         "door_data:/var/lib/mars-v2/door",
         "door_sock:/run/mars-v2/door",
         "session_sock:/run/mars-v2/session:ro",
-        "./licensed-doors:/opt/mars-doors/templates:ro"
+        "./licensed-doors/zork:/opt/mars-doors/templates/zork:ro"
       ],
       "depends_on": {
         "session": {
@@ -822,6 +822,8 @@
         "/run/mars-v2/session/session.sock",
         "--enabled-doors",
         "${MARS_ENABLED_DOORS:-zork,lord}",
+        "--lord-registration-file",
+        "/usr/share/mars-doors/lord-registration.txt",
         "--lord-nodes",
         "${MARS_LORD_NODES:-4}"
       ],

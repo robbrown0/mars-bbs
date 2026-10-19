@@ -38,17 +38,11 @@ Legend of the Red Dragon
   up to four concurrent LORD nodes. Your character and the shared world persist
   between visits; rankings and daily-turn rules remain inside LORD itself.
 
-TradeWars 2002
-  Authentic TradeWars 2002 3.09 provides one persistent local galaxy. The
-  included unregistered edition permits one active node and omits registered
-  features such as alternate ships, citadels, and photon missiles. Mars supplies
-  your userid; the door never receives your BBS password.
-
 Scores and saves
   Mars-native games create Hall of Fame records and resume automatically from
   their last committed command. Zork uses its original SAVE and RESTORE
-  commands. LORD and TradeWars preserve their native shared-world data, but
-  their rankings remain inside those games rather than the Mars Hall of Fame.
+  commands. LORD preserves its native shared-world data, but its rankings remain
+  inside LORD rather than the Mars Hall of Fame.
 
 Safe exits
   Use each game's own QUIT command, or X from the Arcade. Closing SSH terminates
