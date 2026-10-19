@@ -41,6 +41,7 @@ The base deployment is independently buildable without Unraid paths or productio
 - [Troubleshooting](docs/troubleshooting.md)
 - [Licensing and attribution](docs/licensing.md)
 - [Recovery report](docs/recovery.md)
+- [Pirates/Eagles/current feature comparison](docs/heritage-feature-comparison.md)
 - [Source provenance](docs/source-provenance.json)
 
 Recovered first-party files are published for preservation and audit with no blanket relicensing grant. Third-party components retain their own licenses. See the licensing review before redistributing images or adding game data.
