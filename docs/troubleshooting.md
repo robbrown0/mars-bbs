@@ -8,6 +8,6 @@ Chess fails: verify python-chess, `MARS_STOCKFISH=/usr/local/bin/stockfish`, and
 
 Information data unavailable: distinguish cached values, remote provider failures and missing optional API credentials.
 
-DOS doors unavailable: the exact historical PPA packages are no longer downloadable. Use an authorized private copy of the preserved deployed image plus legally obtained templates, or validate and document a future emulator upgrade. Never substitute a placeholder and mark it recovered.
+DOS doors unavailable: verify that Launchpad build record 33849543 and the dosemu2 PPA are reachable, then confirm Docker reports the expected checksum for the retained dosemu2 artifact. The complete deployed image is also preserved privately for authorized recovery. Supply legally obtained door templates separately; never substitute a placeholder and mark it recovered.
 
 External IRC maintenance unavailable: check the ignored JSON configuration, TLS server name, private nickname password, and outbound DNS. The base internal IRC service does not require this optional profile.

@@ -19,10 +19,11 @@ The canonical package contains 37 Python modules. The selected set matches the l
 
 Stockfish 19 was recovered exactly: the official release binary hash equals the file in the deployed game container. The build verifies the official archive checksum and carries its license, authors and full source.
 
+The exact dosemu2 build installed on October 16 was superseded in the rolling PPA the next day and removed from its APT pool at 00:53 UTC on October 19 (20:53 EDT on October 18). Recovery located Launchpad build record 33849543, checksum-pinned its retained amd64 artifact, and verified that its emulator binary matches production. The exact FDPP, libfdpp and comcom64 dependencies remain pinned as well. A private exact image export with SHA-256 `7062bd6d5a52dd2b65e986749f5baea41335ca2cf5490df1ac55a86f4e1278f8` is also preserved outside Git.
+
 ## Incomplete or unavailable
 
 - the custom deployed OpenSSH 10.6p1 build inputs were not present; Debian OpenSSH 10.0p1 is the tested compatible replacement
-- the historical dosemu2 and FDPP package versions are no longer downloadable from the configured PPA, so `Dockerfile.door` records the build but currently fails at dependency resolution; a private exact image export with SHA-256 `7062bd6d5a52dd2b65e986749f5baea41335ca2cf5490df1ac55a86f4e1278f8` was preserved outside Git
 - Zork data, registered LORD files/keys and TradeWars data are private/licensed and excluded; only Zork and LORD were enabled in production, and full interactive door play was not independently reproduced
 - market data is unavailable without an operator API key
 - the stopped production external-IRC container used maintenance-only mode; recovered native-chat bridge behavior passed local fixtures but was not connected to a real third-party network

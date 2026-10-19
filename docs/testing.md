@@ -28,4 +28,4 @@ Validated on 2026-10-18:
 
 The deployed custom OpenSSH 10.6p1 source was unavailable. The Debian OpenSSH 10.0p1 replacement passed the complete SSH smoke test. The exact deployed Stockfish 19 binary was recovered reproducibly from the checksum-pinned official release archive.
 
-The optional door source image does not currently rebuild because its exact historical dosemu2/FDPP PPA versions are no longer published. Door authority and game-selection tests pass, and a private export of the exact deployed image was preserved. Full interactive play of proprietary game data is outside the public test suite.
+The optional door image rebuilds from the checksum-pinned dosemu2 artifact retained on its Launchpad build record and the exact FDPP, libfdpp and comcom64 PPA packages. The recovered artifact's `dosemu2.bin` SHA-256 matches the deployed binary. Door authority and game-selection tests pass, and a private export of the exact deployed image was preserved. Full interactive play of proprietary game data is outside the public test suite.

@@ -18,6 +18,7 @@ Third-party runtime components keep their own notices:
 | bubblewrap | LGPL-2.0-or-later |
 | dosemu2 | GPL-2.0-or-later |
 | FDPP | GPL-3.0-or-later |
+| comcom64 | GPL-3.0-or-later |
 | Frotz | GPL-2.0-or-later |
 
 Base distribution packages carry their notices in the resulting images. Operators distributing images must preserve those notices and meet corresponding-source requirements.
