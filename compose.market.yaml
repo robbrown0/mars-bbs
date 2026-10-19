@@ -1,0 +1,19 @@
+{
+  "services": {
+    "information": {
+      "command": [
+        "--db",
+        "/var/lib/mars-v2/information/information.db",
+        "--socket",
+        "/run/mars-v2/information/information.sock",
+        "--session-socket",
+        "/run/mars-v2/session/session.sock",
+        "--massive-api-key-file",
+        "/run/secrets/massive_api_key"
+      ],
+      "volumes": [
+        "./secrets/massive_api_key:/run/secrets/massive_api_key:ro"
+      ]
+    }
+  }
+}

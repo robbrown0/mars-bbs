@@ -1,0 +1,48 @@
+TALK CENTER
+
+The Talk Center contains three distinct historical ideas: group Chat, paging
+for Direct Talk, and presence. IRC remains separate on the Lobby's I command.
+
+NATIVE CHAT
+
+C enters native multiuser Chat. Your BBS userid is your Chat identity. The
+prompt always shows the current room, for example:
+
+  [lobby] rob:
+
+Commands:
+
+  /who                 List users in the current room
+  /join retro          Enter or create another room
+  /msg userid text     Send a private live message
+  /help                Show the command reminder
+  /exit                Return to the Talk Center
+
+Up recalls earlier input from this Chat visit. Down moves forward again or
+restores the unfinished draft. History is discarded when Chat closes.
+
+DIRECT TALK AND PAGING
+
+T opens the online-user picker. Use the Up/Down arrows and Enter to page the selected
+person, or N to type a userid. The other person opens Talk Center and chooses A
+to answer or R to reject. Once connected, both users receive one status line:
+
+  [userid connected]
+
+Direct Talk uses separate incoming and outgoing panes. A temporary
+[userid is typing] notice appears only while the other input buffer is nonempty.
+Type /exit to end the call. Each endpoint receives exactly:
+
+  [Direct Talk Closed]
+
+U opens the full active-user page. P views a member's public profile. D
+shows UTC and the current account time zone. Pages expire and disconnected
+sessions are cleaned up automatically.
+Native Chat commands include /rooms, /join, /who, /whois, /msg, /me, /nick,
+/ignore, /unignore, and /motd. Room creators may use /invite, /lock, /secret,
+/op, and /kick. A Chat ID changes presentation only; authentication always
+uses the immutable BBS account identity.
+
+Talk Center can set the pager Available or Do Not Disturb. Monitor provides
+session-local online/offline notices for a selected member. No monitor list is
+silently retained after logout.

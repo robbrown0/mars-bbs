@@ -1,0 +1,25 @@
+# Private data and local runtime files
+.env
+.env.*
+!.env.example
+.secrets/
+.test-secrets/
+secrets/
+private/
+data/
+backups/
+recovery/
+licensed-doors/
+*.db
+*.db-*
+*.sqlite*
+*.key
+*.pem
+*.crt
+*.tar
+*.tar.gz
+__pycache__/
+*.pyc
+.venv/
+!irc/dhparams.pem
+config/external-irc.json

@@ -1,0 +1,45 @@
+LOBBY COMMANDS
+
+[B] Boards and public discussions      [N] Scan unread board messages
+[C] Board activity counts              [M] Private Post Office
+[T] Talk Center                         [I] Embedded IRC
+[U] Active users                        [F] File Library
+[W] Revival information and history    [P] Profile and terminal utilities
+[H] This Help Center                    [X] Exit / log off
+
+Profile and terminal utilities moved from the former [A] shortcut to [P].
+Use [P] from the Lobby on all current clients.
+
+Menus accept the highlighted letter immediately; Enter is not normally needed.
+The ? key also opens Help from the Lobby.
+
+LISTS AND READERS
+
+Up            Move to the previous item or line
+Down          Move to the next item or line
+Page Up       Move back one page
+Page Down     Move forward one page
+Enter         Open or select the highlighted item
+X             Leave the current page
+
+J and K remain quiet compatibility alternatives to the arrow keys. Footer
+hints show the commands valid on the current screen.
+
+INTERRUPTION KEYS
+
+Esc quietly acts like X on menus and cancels supported pickers and full-screen
+composition. Ctrl-C cancels an
+unfinished menu command or editor operation; it should not expose a shell.
+Ctrl-D or a transport disconnect ends the session. Use X from the Lobby for a
+normal logout. Esc at a "Press Enter to continue" screen returns immediately;
+Esc at the Lobby prompt logs off, exactly like X.
+
+SCREEN BEHAVIOR
+
+Menus and lists redraw as complete pages. Incoming page, Chat, IRC, and Direct
+Talk events restore the active input line so text already typed is not lost.
+The BBS uses the column and row count negotiated by SSH. Below 60 columns the
+Lobby and supported full-screen tools switch to compact phone layouts; 80x24
+remains the classic desktop presentation. Larger terminals show more content.
+If a client reports the wrong width, use its fit-to-screen/font-size setting or
+the Utilities terminal page to compare the dimensions it actually reported.

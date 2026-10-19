@@ -1,0 +1,3 @@
+# Exact chess module version recovered from deployed vendor/chess/__init__.py
+chess==1.11.2
+# Other dependencies are distribution packages in Dockerfile, including python3-sgp4.

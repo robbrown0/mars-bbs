@@ -1,0 +1,11 @@
+Mars Hotel Revival IRC quick help
+
+JOIN #channel       join a channel
+PART #channel       leave a channel
+PRIVMSG target text send a channel or private message
+NAMES #channel      list channel members
+LIST                list channels
+WHOIS nick          show information about a nickname
+QUIT message        disconnect
+
+Local channels are #lobby and #retro.

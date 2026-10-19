@@ -1,0 +1,52 @@
+{
+  "services": {
+    "external-irc": {
+      "profiles": [
+        "external-irc"
+      ],
+      "build": {
+        "context": ".",
+        "target": "service"
+      },
+      "image": "mars-hotel-recovered-external-irc:local",
+      "user": "21008:21008",
+      "read_only": true,
+      "cap_drop": [
+        "ALL"
+      ],
+      "security_opt": [
+        "no-new-privileges:true"
+      ],
+      "networks": [
+        "outbound"
+      ],
+      "tmpfs": [
+        "/tmp:rw,nosuid,nodev,noexec,size=8m"
+      ],
+      "volumes": [
+        "external_irc_state:/var/lib/mars-v2/external-irc",
+        "./config/external-irc.json:/etc/mars-v2/external-irc.json:ro",
+        "./secrets/external_irc_nick_password:/run/secrets/external_irc_nick_password:ro"
+      ],
+      "command": [
+        "python3",
+        "-m",
+        "marsv2.external_irc",
+        "--config",
+        "/etc/mars-v2/external-irc.json",
+        "--adapter",
+        "synchronet",
+        "--maintenance-only",
+        "--nick-password-file",
+        "/run/secrets/external_irc_nick_password",
+        "--state-file",
+        "/var/lib/mars-v2/external-irc/state.json"
+      ],
+      "pids_limit": 32,
+      "mem_limit": "128m"
+    }
+  },
+  "volumes": {
+    "external_irc_state": {}
+  }
+}

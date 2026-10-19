@@ -1,0 +1,297 @@
+[
+  {
+    "path": "marsv2/__init__.py",
+    "source": "mars-v2ssh-gateway/opt/mars-v2/marsv2/__init__.py",
+    "sha256": "98eb98297f3565e89d3e06c84d19203f0d7aa9334abad9ab7a4603a42c495ae1"
+  },
+  {
+    "path": "marsv2/authd.py",
+    "source": "mars-v2ssh-gateway/opt/mars-v2/marsv2/authd.py",
+    "sha256": "dd7a80d6efefe9250f8687967e62c9e8fd7ed4c20e3c47f721959d72d6ab7cc4"
+  },
+  {
+    "path": "marsv2/authz.py",
+    "source": "mars-v2ssh-gateway/opt/mars-v2/marsv2/authz.py",
+    "sha256": "74116c1981d9c5a6601109c79ce85fc71579c49ba237e36dc597fddeb3ba1bb9"
+  },
+  {
+    "path": "marsv2/bbs_login.py",
+    "source": "mars-v2ssh-gateway/opt/mars-v2/marsv2/bbs_login.py",
+    "sha256": "1936366985e33da505736e34fb10b87b50a65608193e2855605b865273a149f1"
+  },
+  {
+    "path": "marsv2/boardd.py",
+    "source": "mars-v2ssh-gateway/opt/mars-v2/marsv2/boardd.py",
+    "sha256": "5d2b6ed156272f1e0552032b3a132973d9e9cd0add9626a2f014b0cd229bf14e"
+  },
+  {
+    "path": "marsv2/bootstrap.py",
+    "source": "mars-v2ssh-gateway/opt/mars-v2/marsv2/bootstrap.py",
+    "sha256": "e9e0ce116463bb983e047173345cd05e989c0c3992122e80abbaf29132629f2c"
+  },
+  {
+    "path": "marsv2/bridge_init.py",
+    "source": "mars-v2ssh-gateway/opt/mars-v2/marsv2/bridge_init.py",
+    "sha256": "26508701dab868bc43e757dfb5edd15e14ccdb57dd3f7c78467c63e79a91cdb1"
+  },
+  {
+    "path": "marsv2/catalog_matches.py",
+    "source": "mars-v2ssh-gateway/opt/mars-v2/marsv2/catalog_matches.py",
+    "sha256": "b1d4dfa8b0350de166f320b89175217b036fbe0036bea786b6c523ab2ef7a134"
+  },
+  {
+    "path": "marsv2/chatd.py",
+    "source": "mars-v2ssh-gateway/opt/mars-v2/marsv2/chatd.py",
+    "sha256": "55d766babf024a67876feb8b48b831577fb594371a3deb3bc4550c9df5df74a4"
+  },
+  {
+    "path": "marsv2/client.py",
+    "source": "mars-v2ssh-gateway/opt/mars-v2/marsv2/client.py",
+    "sha256": "0373ba84128ca75c300311d0b64a6ed445623c3c9a86dd800f4d065ca3b7cb16"
+  },
+  {
+    "path": "marsv2/curated_import.py",
+    "source": "mars-v2ssh-gateway/opt/mars-v2/marsv2/curated_import.py",
+    "sha256": "13e33d5aaaa57e0a26f7fa4e9df07414bc5e7909c67425c60ccef70ece400e5e"
+  },
+  {
+    "path": "marsv2/db.py",
+    "source": "mars-v2ssh-gateway/opt/mars-v2/marsv2/db.py",
+    "sha256": "507cad03c3eaf5a62c9759039abe3c034ce14894d638b5afb41ddc46d7f5360a"
+  },
+  {
+    "path": "marsv2/door_client.py",
+    "source": "mars-v2ssh-gateway/opt/mars-v2/marsv2/door_client.py",
+    "sha256": "e38a8d98374e6885dab111f29a4a20e24b6d9dec83942c100ff07575b9ca7902"
+  },
+  {
+    "path": "marsv2/door_sandbox.py",
+    "source": "mars-v2ssh-gateway/opt/mars-v2/marsv2/door_sandbox.py",
+    "sha256": "1e4493c20fa86501053c8a2993ababb8405526fe09edae1c36d2f8cfd56328ac"
+  },
+  {
+    "path": "marsv2/external_irc.py",
+    "source": "mars-v2ssh-gateway/opt/mars-v2/marsv2/external_irc.py",
+    "sha256": "69fe568f60314bd2ce526a327a298988adb0231b8391bc7575b7437a7a639d84"
+  },
+  {
+    "path": "marsv2/external_irc_health.py",
+    "source": "mars-v2ssh-gateway/opt/mars-v2/marsv2/external_irc_health.py",
+    "sha256": "7bf572a2f6dd5435a3f513293311f565af5c456246791a6136c1ddefd752584b"
+  },
+  {
+    "path": "marsv2/file_download.py",
+    "source": "mars-v2ssh-gateway/opt/mars-v2/marsv2/file_download.py",
+    "sha256": "3aef8f9dda347eb31c6a1f99851e2c58188f0c0a2fff759bd84c21fbeb34314e"
+  },
+  {
+    "path": "marsv2/file_import.py",
+    "source": "mars-v2ssh-gateway/opt/mars-v2/marsv2/file_import.py",
+    "sha256": "06b84c9fa0d168be7212d2884c24e1e10be4c7a162fdec17adde3f1b2188644f"
+  },
+  {
+    "path": "marsv2/filed.py",
+    "source": "mars-v2ssh-gateway/opt/mars-v2/marsv2/filed.py",
+    "sha256": "7c7d9b028839bcc3690320beecf3b6e88e5319050bdc82f435932417dc28416c"
+  },
+  {
+    "path": "marsv2/gamed.py",
+    "source": "mars-v2ssh-gateway/opt/mars-v2/marsv2/gamed.py",
+    "sha256": "fdab028d8bd677aaaa34b41ce7c4877979f2a14d526007d7de9c9f442d5a1a86"
+  },
+  {
+    "path": "marsv2/games.py",
+    "source": "mars-v2ssh-gateway/opt/mars-v2/marsv2/games.py",
+    "sha256": "21a4ab94539ac964ac2c401b52baf99b22281f567f99f267aa8ba38207e15ccc"
+  },
+  {
+    "path": "marsv2/health.py",
+    "source": "mars-v2ssh-gateway/opt/mars-v2/marsv2/health.py",
+    "sha256": "2515a5374109e987cf9719da55f2b89bb9356f33adc858d0ca74dfa9cc935548"
+  },
+  {
+    "path": "marsv2/identity.py",
+    "source": "mars-v2ssh-gateway/opt/mars-v2/marsv2/identity.py",
+    "sha256": "9dbe338bbe1b38f06c62449f926edd796b0dfc9707047110e17dfd2de5b857b7"
+  },
+  {
+    "path": "marsv2/informationd.py",
+    "source": "mars-v2ssh-gateway/opt/mars-v2/marsv2/informationd.py",
+    "sha256": "809b03001cc3bbd86197a683e0d3a0f70ae813a8cdc151145ba9d54977b3c1fb"
+  },
+  {
+    "path": "marsv2/ircbridge.py",
+    "source": "mars-v2ssh-gateway/opt/mars-v2/marsv2/ircbridge.py",
+    "sha256": "9794ee2a3ceb07336cfcf77ae86183d3cec372966369e56e0c60fd675edd7fd8"
+  },
+  {
+    "path": "marsv2/maild.py",
+    "source": "mars-v2ssh-gateway/opt/mars-v2/marsv2/maild.py",
+    "sha256": "e4d55b4fb92d3565533c1b4eb50d078f8381924402bc2bd4a155e77c126622df"
+  },
+  {
+    "path": "marsv2/migrate.py",
+    "source": "mars-v2ssh-gateway/opt/mars-v2/marsv2/migrate.py",
+    "sha256": "627cfd7eb0f007e8ccd1454c0a613e7154f228a2c27e393ca348c3c7b6af16c2"
+  },
+  {
+    "path": "marsv2/rpc.py",
+    "source": "mars-v2ssh-gateway/opt/mars-v2/marsv2/rpc.py",
+    "sha256": "880ccbf63ca90a0628bc2c8c020131ed8c4fb2e95b905e07d1fedaec5cc6ad02"
+  },
+  {
+    "path": "marsv2/sessiond.py",
+    "source": "mars-v2ssh-gateway/opt/mars-v2/marsv2/sessiond.py",
+    "sha256": "b8ce2b39ac01aea85fca4cce8150cff50c313272882302e771a3d0df8d4bce89"
+  },
+  {
+    "path": "marsv2/sodium.py",
+    "source": "mars-v2ssh-gateway/opt/mars-v2/marsv2/sodium.py",
+    "sha256": "2939e01c08c0a2831a709ffd607483d3c6a07997138bc31ab3492078478e6755"
+  },
+  {
+    "path": "marsv2/supervisor.py",
+    "source": "mars-v2ssh-gateway/opt/mars-v2/marsv2/supervisor.py",
+    "sha256": "f20a90af9dc12eb526cecb69c8806b2a93c8db4790414415908895301fc58528"
+  },
+  {
+    "path": "marsv2/terminal.py",
+    "source": "mars-v2ssh-gateway/opt/mars-v2/marsv2/terminal.py",
+    "sha256": "b775e47386cdcd0ecbec800480d41a0db99f3fc25ea767840bc8d9f10c2bb0cc"
+  },
+  {
+    "path": "marsv2/timezones.py",
+    "source": "mars-v2ssh-gateway/opt/mars-v2/marsv2/timezones.py",
+    "sha256": "e4281f8067f1a45fb1d44793f3655b2c59fc2e538c9b97cfdeddb42decad3738"
+  },
+  {
+    "path": "marsv2/ui.py",
+    "source": "mars-v2ssh-gateway/opt/mars-v2/marsv2/ui.py",
+    "sha256": "76f1ce07e6aeec4c13d415f727993ec8509fcb9b1ca64539140cd9f7c6d4409f"
+  },
+  {
+    "path": "marsv2/validate.py",
+    "source": "mars-v2ssh-gateway/opt/mars-v2/marsv2/validate.py",
+    "sha256": "a836c211adaadfb2fb94f3e4bd3d55817656b77e93339a01507741cb67c4bebe"
+  },
+  {
+    "path": "marsv2/welcome.py",
+    "source": "mars-v2ssh-gateway/opt/mars-v2/marsv2/welcome.py",
+    "sha256": "7940eb95b215e58e7a49cf442121ffcde34101c364e8206dca255b9f1e485d1b"
+  },
+  {
+    "path": "assets/chat-motd.txt",
+    "source": "mars-v2ssh-gateway/opt/mars-v2/assets/chat-motd.txt",
+    "sha256": "a4547f92388d70097746f290b4aa2a177eaf43906df338e406e52e4868375461"
+  },
+  {
+    "path": "assets/doors/dosemu.conf",
+    "source": "mars-v2ssh-gateway/opt/mars-v2/assets/doors/dosemu.conf",
+    "sha256": "c440394a8b4c3264e66f13ddcb82f2a9ddd97a70c773abcfa28252ef2f21f67e"
+  },
+  {
+    "path": "assets/doors/dosemurc",
+    "source": "mars-v2ssh-gateway/opt/mars-v2/assets/doors/dosemurc",
+    "sha256": "b211ebd35ae30042429cb1305cc3df027d8afc04acc068221e3424bfde2c6c48"
+  },
+  {
+    "path": "assets/doors/marslord.bat",
+    "source": "mars-v2ssh-gateway/opt/mars-v2/assets/doors/marslord.bat",
+    "sha256": "7e2fc5e16e2e7d3616d2bcc1bdb193e31f6c9a074ae430a48c08b5bf35baf458"
+  },
+  {
+    "path": "assets/doors/marstw.bat",
+    "source": "mars-v2ssh-gateway/opt/mars-v2/assets/doors/marstw.bat",
+    "sha256": "a5424f3bcb0bfeb36f0a9f9b6b215eb051c580a3e37e50610fd976b9baf2a162"
+  },
+  {
+    "path": "assets/info/about.txt",
+    "source": "mars-v2ssh-gateway/opt/mars-v2/assets/info/about.txt",
+    "sha256": "c81f3b7ce49b7d7d38d6f4e3cd82f8f3c8dfb217794a1cf2cabeebaa438228f4"
+  },
+  {
+    "path": "assets/info/help-account.txt",
+    "source": "mars-v2ssh-gateway/opt/mars-v2/assets/info/help-account.txt",
+    "sha256": "e3eb88bef7c320c17ea16f8537647460f81863a801b4411d4849ed6463de5a9f"
+  },
+  {
+    "path": "assets/info/help-boards-mail.txt",
+    "source": "mars-v2ssh-gateway/opt/mars-v2/assets/info/help-boards-mail.txt",
+    "sha256": "116b51d05d5c811614e6c15fd5f66248a0a3aab89aa9325b6f8e0176ac848d49"
+  },
+  {
+    "path": "assets/info/help-files.txt",
+    "source": "mars-v2ssh-gateway/opt/mars-v2/assets/info/help-files.txt",
+    "sha256": "597c10c64117f534a42088e5839607b7b802444477f34d2d71573a19a80331a1"
+  },
+  {
+    "path": "assets/info/help-games.txt",
+    "source": "mars-v2ssh-gateway/opt/mars-v2/assets/info/help-games.txt",
+    "sha256": "af2f5af15b9225616d71c26f215bf385ddb67bb8828036777845f2af7979afb8"
+  },
+  {
+    "path": "assets/info/help-general.txt",
+    "source": "mars-v2ssh-gateway/opt/mars-v2/assets/info/help-general.txt",
+    "sha256": "ad68beb9ea0aec747ee19376789c83f4da113b40fbd59a5671019b86ec9b46dc"
+  },
+  {
+    "path": "assets/info/help-information.txt",
+    "source": "mars-v2ssh-gateway/opt/mars-v2/assets/info/help-information.txt",
+    "sha256": "326fccaae61bdd09ed7f4e844461763a38ef52b1efdfe565aaaecebdffd2f72f"
+  },
+  {
+    "path": "assets/info/help-irc.txt",
+    "source": "mars-v2ssh-gateway/opt/mars-v2/assets/info/help-irc.txt",
+    "sha256": "346dec549fb99843c8c5a02e2e57d6c99cd9383e6dffc3bfa0df6d31d07c040d"
+  },
+  {
+    "path": "assets/info/help-live.txt",
+    "source": "mars-v2ssh-gateway/opt/mars-v2/assets/info/help-live.txt",
+    "sha256": "b117f1caacbd1248adecee5b7359af7f481900927f43e5a3dd56897e1ff9f827"
+  },
+  {
+    "path": "assets/info/historical-evidence.txt",
+    "source": "mars-v2ssh-gateway/opt/mars-v2/assets/info/historical-evidence.txt",
+    "sha256": "115f8a5903b77e6b7e87514147eb305ef5cfef6bbd9a58f7036070de52fe5510"
+  },
+  {
+    "path": "assets/info/mars-history.txt",
+    "source": "mars-v2ssh-gateway/opt/mars-v2/assets/info/mars-history.txt",
+    "sha256": "a8ab1db5cd347476a8f3ba7878d067561355ee7d4dd4a46821fcbbc5fec4bfa5"
+  },
+  {
+    "path": "assets/mars-welcome.txt",
+    "source": "mars-v2ssh-gateway/opt/mars-v2/assets/mars-welcome.txt",
+    "sha256": "853a40ae461ca0587810720f766dbb027a19359dc9986541612c4d4d0f4be27a"
+  },
+  {
+    "path": "bin/bbs-login",
+    "source": "mars-v2ssh-gateway/opt/mars-v2/bin/bbs-login",
+    "sha256": "0a40bea06bc422e4f5e1cfc9a56e6c5d7b19a5605a517288f433ba98d5257431"
+  },
+  {
+    "path": "marsv2/doord.py",
+    "source": "mars-v2final-door:/opt/mars-v2/marsv2/doord.py",
+    "sha256": "8740ef7da3977cc4cec89bddcf850b2c78c1917a476291d722b38895d28ba044"
+  },
+  {
+    "path": "irc/dhparams.pem",
+    "source": "mars-v2-irc-recovery/opt/mars-irc/dhparams.pem",
+    "sha256": "64ca12a858e3769b2bf399a4ed5317ceadbfc77387cf9a1395f168b70a10c818"
+  },
+  {
+    "path": "irc/help.txt",
+    "source": "mars-v2-irc-recovery/opt/mars-irc/help.txt",
+    "sha256": "c66d0a6c772f75223b93a0dd49752f0a4bccf44688403df8c098f5c69b356bd9"
+  },
+  {
+    "path": "irc/motd.txt",
+    "source": "mars-v2-irc-recovery/opt/mars-irc/motd.txt",
+    "sha256": "f464f77758d012edb286040520bdb24dc9347bbd3bd703be53cf324828389671"
+  },
+  {
+    "path": "irc/ngircd.conf",
+    "source": "mars-v2-irc-recovery/opt/mars-irc/ngircd.conf",
+    "sha256": "ccc26d4e98c911b2e37e87e2e5efed60cccf46e8421301dbc9614e19d308e49f"
+  }
+]

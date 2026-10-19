@@ -1,0 +1,39 @@
+FILE LIBRARY
+
+The File Library contains real reviewed payloads that the BBS is allowed to
+present. Choose an area with the Up/Down arrows and Enter, then select a file to open
+it in the terminal-safe reader.
+
+The reader supports Up/Down line scrolling, Page Up/Page Down, and X to leave.
+J/K and the former E/Q exit aliases remain accepted for compatibility.
+Fixed-column ASCII drawings retain their spacing. Wide material can offer
+horizontal H/L movement instead of destructive word wrapping.
+
+MARS HISTORICAL CATALOG
+
+C from the File Library opens a separate catalog derived from the surviving
+mars.lst listing. It records historical filenames, categories, sizes, dates,
+and recovery status. S searches filenames.
+
+LISTED or NOT FOUND means a historical record exists but no approved payload is
+available. RECOVERED means an actual reviewed file is connected to the record.
+Catalog-only entries cannot be opened or downloaded as if their contents had
+survived.
+
+SAFETY AND PROVENANCE
+
+Original bytes and checksums are retained separately from terminal-safe preview
+text. Arbitrary control sequences are not sent directly to your terminal. A
+file's description and catalog metadata distinguish original Mars-listed
+material from corroborated variants and curated period additions.
+
+The forced-session SSH service does not provide a shell, directory browsing,
+SCP, or SFTP. Approved entries offer [D]ownload: Mars displays a complete SSH
+command containing a short-lived, one-use ticket for that file. Run the command
+on your own computer within five minutes. Original bytes are written to the
+local filename shown after `>`, and the screen supplies a SHA-256 for checking.
+
+[B] provides the earlier Base64 terminal export for clients that cannot run a
+download command. Base64 exports are bounded to 2 MiB; ticketed SSH downloads
+are bounded to 16 MiB. Neither mechanism accepts a server path, runs a transfer
+program, or permits uploads.

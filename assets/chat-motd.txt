@@ -1,0 +1,6 @@
+MARS HOTEL NATIVE CHAT
+
+Welcome to the local conversation system. Rooms and Chat IDs are a safe
+reconstruction of the Eagles-era experience; they are not recovered Mars
+Hotel configuration. Type /help for the command list. Public IRC remains a
+separate choice in the Lobby.

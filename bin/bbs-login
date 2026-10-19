@@ -1,0 +1,5 @@
+#!/usr/bin/python3
+import sys
+sys.path.insert(0, "/opt/mars-v2")
+from marsv2.bbs_login import main
+main()

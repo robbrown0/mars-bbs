@@ -1,0 +1,58 @@
+# Installation and deployment
+
+## Requirements
+
+- Linux x86-64 with Docker Engine and the Docker Compose v2 plugin or standalone binary
+- OpenSSL for first-run secret generation
+- outbound HTTPS during image builds and for information collectors
+- a DNS name and TCP port for public SSH, if the instance will be public
+
+No Unraid paths or existing Mars Hotel volumes are required. Exact base-image digests, Python dependencies and the Stockfish 19 archive checksum are pinned in the Dockerfiles. Distribution package repositories remain an external build dependency.
+
+## First start
+
+```console
+git clone https://github.com/robbrown0/mars-bbs.git
+cd mars-bbs
+cp .env.example .env
+sudo ./scripts/init-secrets.sh
+docker compose config --quiet
+docker compose build
+docker compose up -d
+docker compose ps
+```
+
+`init-secrets.sh` creates an initial administrator password, separate IRC server/client password files, and a private one-year IRC certificate. It never overwrites existing files. Root is required only so files can be owned by the fixed non-root service UIDs. The one-shot `auth-init` service creates the administrator only when the account store is empty.
+
+Read `secrets/admin_password` locally and log in as `admin`. Protect or rotate that credential according to local policy. A normal installation exposes only `${BBS_BIND_ADDRESS}:${BBS_PORT}` and defaults to `0.0.0.0:2223`.
+
+## Configuration variables
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `COMPOSE_PROJECT_NAME` | `mars-hotel` | Prefix for isolated Docker resources |
+| `BBS_BIND_ADDRESS` | `0.0.0.0` | Host address for the SSH gateway |
+| `BBS_PORT` | `2223` | Host SSH port |
+| `BBS_PUBLIC_HOST` | `mars.ee.msstate.edu.pl` | Hostname shown by the BBS |
+| `BBS_PUBLIC_IPV4` | empty | Optional displayed IPv4 address |
+| `BBS_DOWNLOAD_HOST` | Mars public host | Download connection hostname |
+| `MARS_INFORMATION_USER_AGENT` | generic Mars identifier | Collector HTTP User-Agent; add an operator contact if desired |
+| `PUBLIC_IRC_*` | Mars IRC defaults | Destination shown in IRC Center |
+| `MARS_DOOR_IMAGE` | local reconstructed door image | Optional preloaded compatible door image |
+| `MARS_ENABLED_DOORS` | `zork,lord` | Optional enabled door IDs |
+| `MARS_LORD_NODES` | `4` | LORD node count |
+
+Do not put passwords, tokens or private keys in `.env`. Optional credentials use read-only files described in [optional-services.md](optional-services.md).
+
+## Operations
+
+```console
+docker compose ps
+docker compose logs --tail=100 gateway auth session
+docker compose build --pull
+docker compose up -d
+```
+
+Review a new image in an isolated Compose project before upgrading a public installation. Database migrations occur in the recovered services and were tested against fixture copies; take private, consistent backups before any upgrade.
+
+Use `127.0.0.1` for `BBS_BIND_ADDRESS` during local validation. Production cutover, DNS changes and importing recovered production data are separate operator actions and are not performed by this repository.

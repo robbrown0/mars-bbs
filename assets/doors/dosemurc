@@ -1,0 +1,4 @@
+# Keep the per-door configuration intentionally small.  Terminal mode and the
+# container's lack of devices/network already disable hardware access.
+$_layout = "us"
+$_xterm_title = ""

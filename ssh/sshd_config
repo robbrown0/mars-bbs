@@ -1,0 +1,39 @@
+Port 2222
+AddressFamily inet
+ListenAddress 0.0.0.0
+Protocol 2
+HostKey /var/lib/mars-v2-ssh/ssh_host_ed25519_key
+PidFile /run/sshd/sshd.pid
+PermitRootLogin no
+PubkeyAuthentication no
+PasswordAuthentication yes
+KbdInteractiveAuthentication no
+HostbasedAuthentication no
+IgnoreRhosts yes
+# Deliberately accept SSH's initial "none" request for the sole transport
+# identity.  ForceCommand and the account shell both enter the BBS; authd
+# authenticates or registers the application user inside the encrypted PTY.
+PermitEmptyPasswords yes
+AllowUsers bbs
+StrictModes yes
+PermitTTY yes
+PermitUserRC no
+PermitUserEnvironment no
+AcceptEnv TERM
+DisableForwarding yes
+AllowTcpForwarding no
+AllowAgentForwarding no
+PermitOpen none
+PermitListen none
+X11Forwarding no
+PermitTunnel no
+GatewayPorts no
+MaxSessions 1
+MaxAuthTries 3
+MaxStartups 10:30:30
+LoginGraceTime 30
+ClientAliveInterval 60
+ClientAliveCountMax 2
+Compression no
+ForceCommand /opt/mars-v2/bin/bbs-login
+LogLevel VERBOSE

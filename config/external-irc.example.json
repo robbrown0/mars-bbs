@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "adapters": {
+    "synchronet": {
+      "enabled": false,
+      "host": "irc.example.invalid",
+      "port": 6697,
+      "server_name": "irc.example.invalid",
+      "network": "Operator configured IRC",
+      "channel": "#MarsHotel",
+      "room": "marshotel",
+      "nick": "MarsHotel",
+      "require_nick_identification": true
+    }
+  }
+}

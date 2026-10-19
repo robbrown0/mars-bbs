@@ -1,0 +1,52 @@
+HOW TO READ THE HISTORY PAGES
+
+The Revival uses three practical evidence labels:
+
+VERIFIED
+  Supported directly by recovered source, an original distribution document,
+  or a surviving contemporary archive record.
+
+CORROBORATED
+  Supported by period listings, Usenet references, later maintainer material,
+  or multiple consistent recollections, but not by a complete site backup.
+
+RECONSTRUCTED
+  A modern compatibility or design choice made to preserve the spirit and
+  usability of the BBS. Reconstructed details are not called original Mars
+  behavior or artwork.
+
+STRONGEST PRIMARY EVIDENCE
+
+* Pirate BBS 1.9 ReadMe, written by Edward Luke. It identifies the archive as
+  the code running on Mars on November 25, 1991.
+* Recovered Pirate source for login, Boards, Mail, Talk, local Chat, IRC launch,
+  online-session records, and file areas.
+* mars.lst and mars.inf as surviving records of the Mars FTP collection.
+* README.linux for the later Jupiter host reference and Linux port history.
+
+IMPORTANT LIMITATIONS
+
+The Pirate archive says an irc2.5.1 directory contained the hardened client and
+server, but that directory is absent from the surviving public copy inspected
+by this project. The exact Mars IRC prompt, startup text, channels, and server
+configuration therefore remain unknown. Current IRC wording is a documented
+reconstruction built around correct IRC registration and command semantics.
+
+The recovered Pirate welcome picture is genuine distribution artwork, but it
+has not been proven to be the production Mars login screen. The current hotel
+art is locally created Revival artwork.
+
+Privacy is also history. Old example account files and any potential user data
+are not treated as login credentials or republished as active identities.
+
+WHERE TO LOOK IN THE PROJECT
+
+The detailed research record is stored with the project in:
+
+  docs/MARS_HISTORY.md
+  docs/CHAT_COMPATIBILITY.md
+  docs/MARS_FILE_RECOVERY.md
+  research/SOURCES.tsv
+
+Those records include source URLs, checksums, confidence notes, and the known
+gaps. This BBS page is a readable tour, not a replacement for that evidence.

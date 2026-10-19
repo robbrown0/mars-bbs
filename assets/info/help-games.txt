@@ -1,0 +1,58 @@
+GALACTIC ARCADE
+
+The Arcade is available only after BBS authentication. Each game uses your
+Mars userid automatically. There are no separate game passwords or accounts.
+
+Oregon Trail
+  Begin by buying oxen, food, ammunition, clothing, and spare parts. Use HELP
+  at either the outfitting or trail prompt. Progress is saved after every
+  accepted command. QUIT returns to the Arcade without abandoning the trip.
+
+WOPR / Joshua
+  Type HELP or LIST GAMES at the JOSHUA prompt. Only installed routines are
+  listed. QUIT returns to the Arcade. The simulation has no external AI or
+  network access and contains no real military targeting information.
+
+Falken's Maze (inside WOPR / Joshua)
+  From the JOSHUA prompt, type PLAY FALKEN'S MAZE. The Maze is not duplicated
+  on the Galactic Arcade's main menu.
+  Move with N, S, E, and W. LOOK examines a room. TAKE useful items, and use
+  ANSWER when a terminal presents a puzzle. QUIT returns to JOSHUA.
+
+Mars Hotel Chess
+  Play complete tournament chess against Stockfish 19. Use the arrow keys and
+  Enter to select a piece and highlighted destination, or press M and enter a
+  move such as e4, Nf3, O-O, or e2e4. L cycles Cadet, Voyager, and Commander
+  difficulty. N starts a new game after confirmation; R resigns after
+  confirmation. The board, move history, and result persist with your account.
+  The screen automatically changes between full 80-column and narrow-phone
+  layouts without changing the rules or saved position.
+
+Zork I
+  This is the authentic Infocom release 119 story running under native Frotz.
+  Commands include LOOK, INVENTORY, SAVE, RESTORE, RESTART, and QUIT. Saves
+  belong to your Mars account and cannot be selected from another account.
+
+Legend of the Red Dragon
+  Authentic, registered LORD 4.02a runs as an isolated DOS door. Mars permits
+  up to four concurrent LORD nodes. Your character and the shared world persist
+  between visits; rankings and daily-turn rules remain inside LORD itself.
+
+TradeWars 2002
+  Authentic TradeWars 2002 3.09 provides one persistent local galaxy. The
+  included unregistered edition permits one active node and omits registered
+  features such as alternate ships, citadels, and photon missiles. Mars supplies
+  your userid; the door never receives your BBS password.
+
+Scores and saves
+  Mars-native games create Hall of Fame records and resume automatically from
+  their last committed command. Zork uses its original SAVE and RESTORE
+  commands. LORD and TradeWars preserve their native shared-world data, but
+  their rankings remain inside those games rather than the Mars Hall of Fame.
+
+Safe exits
+  Use each game's own QUIT command, or X from the Arcade. Closing SSH terminates
+  the attached game process and releases its node without deleting saved state.
+
+A half-forgotten school computer may still answer if you call it JOSHUA from
+the Lobby.

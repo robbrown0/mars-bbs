@@ -1,0 +1,54 @@
+WHAT THIS REVIVAL IS
+
+Mars Hotel Revival is a private, terminal-first community inspired by The
+Mars Hotel BBS at Mississippi State University. It preserves the character of
+a dial-up-era BBS: a keyboard-driven Lobby, public boards, private mail, live
+conversation, and a library meant for wandering.
+
+The interface is intentionally text-mode. It is not a web forum wearing a
+retro theme. Menus respond to single-letter commands, long material opens in
+paged readers, and real-time conversation stays inside the terminal session.
+
+WHAT YOU CAN DO HERE
+
+* Read and reply on public message boards.
+* Use the Post Office for private mail, sent mail, and drafts.
+* Enter native Chat rooms with your authenticated BBS identity.
+* Page an online member for one-to-one split-screen Direct Talk.
+* Enter a separate, restricted local IRC service.
+* Browse curated period texts and the surviving Mars FTP catalog.
+* Maintain a display name, private email address, public profile, password,
+  and personal time zone.
+
+WHAT WAS PRESERVED
+
+The project began by restoring Eagles BBS, a maintained descendant of Pirate
+BBS, and by studying the recovered Pirate BBS 1.9 source. Pirate's own ReadMe
+says that version was running on Mars Hotel on November 25, 1991. The Revival
+keeps the historically important separation between Talk, native Chat, and
+IRC, while preserving terminal navigation and upstream credits.
+
+WHAT WAS RECONSTRUCTED
+
+No production backup of Mars Hotel's boards, private mail, accounts, menus,
+welcome artwork, or IRC configuration has been recovered. The hotel artwork,
+Lobby wording, room names, polished mail client, and modern containment model
+are Revival work. They are never presented as recovered Mars artifacts.
+
+HOW THE MODERN SYSTEM DIFFERS
+
+SSH supplies encrypted transport and a real PTY. BBS authentication still
+happens at the familiar userid-or-new prompt. Authoritative accounts, boards,
+mail, files, presence, native Chat, and IRC are separated into constrained
+services instead of exposing one shared legacy filesystem to every session.
+
+This improves containment but does not make the software vulnerability-free
+or by itself settle Internet-ingress policy. The project remains honest about
+tested boundaries, historical uncertainty, and unfinished work.
+
+THE NAME
+
+This system is Mars Hotel-inspired. It is not the recovered original site and
+does not claim ownership of the original community's messages, identities, or
+artwork. Its purpose is to remember how that kind of place felt while making a
+small, useful terminal community for today.

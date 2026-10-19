@@ -1,0 +1,17 @@
+.git
+.env
+.env.*
+!.env.example
+.secrets
+.test-secrets
+secrets
+private
+data
+backups
+licensed-doors
+*.db
+*.db-*
+*.sqlite*
+*.key
+*.crt
+__pycache__

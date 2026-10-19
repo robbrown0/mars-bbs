@@ -1,0 +1,56 @@
+MESSAGE BOARDS
+
+Boards are public community discussions. Select a board, move through its post
+list with the Up/Down arrows, and press Enter to read. N from the Lobby scans unread
+posts. C shows board totals and unread counts.
+
+S opens the board chooser. Use Up/Down or Page Up/Page Down to browse every
+board, or type part of its number, name, or description to filter immediately.
+Enter chooses the highlighted board; Esc cancels and keeps the current board.
+
+Within a board, P creates a post and R replies to the selected post. Replies use
+the full-screen editor and include quoted context where appropriate. Permission
+checks are performed by the board service, not merely hidden in the menu.
+
+THE POST OFFICE
+
+Mail is private between BBS accounts. The folder view shows unread state and
+supports Inbox, Sent, and Drafts. C composes a new message. Recipient selection
+can be filtered by typing, or browsed with an empty search. Reply goes directly
+to the original sender; Forward asks for a new recipient. Replies and forwards
+include readable message history.
+
+FULL-SCREEN EDITOR
+
+Arrow keys      Move through the whole message
+Home / End      Move within the displayed line
+Page Up/Down    Scroll a long message
+Enter           Insert a new line
+Backspace       Delete before the cursor
+Delete          Delete at the cursor
+F2              Begin Send/Post confirmation
+F3              Save a mail draft
+Esc or Ctrl-C   Cancel without sending
+
+A period on a line is ordinary text; the historical dot-to-finish convention
+is not used. Unknown terminal control sequences are rejected rather than saved
+inside a message. Message-size limits are enforced by the authoritative service.
+
+PRIVACY
+
+An ordinary account may read only its own mailbox through normal operations.
+Email addresses in profiles are private. Do not put secrets into board posts,
+mail, drafts, or quoted history merely because the transport is encrypted.
+NEW scans unread messages across every board in your scan set. On a board,
+Visit marks its current messages read; Zap removes it from New scans, and the
+same key restores it. A required board cannot be zapped. Read state belongs to
+each individual message, so opening a newer post never hides an older unread
+one.
+
+Post owners can edit, move, or delete their own unprotected posts. Delegated
+Board Managers can protect and moderate their board. The service checks every
+operation even if a menu item is visible.
+
+Post Office [G] sends group mail to as many as 16 selected local members.
+Account signatures are appended only when a message or post is sent; drafts
+remain clean and editable.

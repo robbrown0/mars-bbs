@@ -1,0 +1,42 @@
+ACCOUNT AND TERMINAL UTILITIES
+
+P from the Lobby opens Profile and terminal Utilities. This replaces the
+former Lobby A shortcut.
+
+A  Show your account profile
+M  Modify display name, private email, public About text, and time zone
+P  Change your BBS password
+T  Show TERM, terminal dimensions, UTC, and account-local time
+I  Show release and reconstruction information
+X  Return to the Lobby
+
+ACCOUNT CREATION
+
+At the login prompt, enter new to begin registration when registration is open.
+Userids are 1-12 characters. Passwords are handled by the authentication
+service using its maintained password-hashing implementation. Unsupported
+lengths are rejected instead of silently truncated.
+
+SSH provides the encrypted terminal transport. The fixed SSH name bbs is not
+your BBS identity; the userid prompt inside the session performs BBS login.
+There is no general operating-system shell, remote command, port forwarding,
+agent forwarding, SCP, or SFTP path.
+
+PROFILE PRIVACY
+
+Display name and About text are public profile fields. Email is private. Your
+selected IANA time zone controls account-local date displays; UTC is shown as a
+stable reference. Use a unique password that is not reused on another service.
+
+TERMINAL NOTES
+
+xterm, xterm-256color, and compatible mobile SSH terminals are supported. The
+BBS reads the SSH PTY size and uses compact layouts below 60 columns; 80x24
+remains the classic desktop size. Rotating a phone or opening its keyboard may
+send a resize automatically. The next redraw uses the new dimensions. If arrow
+or function keys are awkward on a mobile keyboard, use the letter alternatives
+shown in each footer. Never paste untrusted terminal-control sequences into a
+session.
+The Lobby and member directory show last-check-in information. Modify Profile
+also accepts a signature of up to four lines; it is appended to new board and
+mail messages at delivery time.

@@ -1,0 +1,883 @@
+{
+  "name": "${COMPOSE_PROJECT_NAME:-mars-hotel}",
+  "services": {
+    "gateway": {
+      "build": {
+        "context": ".",
+        "target": "gateway"
+      },
+      "image": "mars-hotel-recovered-gateway:local",
+      "read_only": true,
+      "cap_drop": [
+        "ALL"
+      ],
+      "security_opt": [
+        "no-new-privileges:true"
+      ],
+      "user": "0:0",
+      "tmpfs": [
+        "/tmp:rw,nosuid,nodev,noexec,size=64m",
+        "/run:rw,nosuid,nodev,size=64m"
+      ],
+      "volumes": [
+        "session_sock:/run/mars-v2/session:ro",
+        "ssh_hostkeys:/var/lib/mars-v2-ssh",
+        "auth_sock:/run/mars-v2/auth:ro",
+        "door_sock:/run/mars-v2/door:ro",
+        "game_sock:/run/mars-v2/game:ro",
+        "irc_sock:/run/mars-v2/irc:ro",
+        "board_sock:/run/mars-v2/board:ro",
+        "chat_sock:/run/mars-v2/chat:ro",
+        "file_sock:/run/mars-v2/file:ro",
+        "information_sock:/run/mars-v2/information:ro",
+        "mail_sock:/run/mars-v2/mail:ro"
+      ],
+      "restart": "unless-stopped",
+      "cap_add": [
+        "AUDIT_WRITE",
+        "CHOWN",
+        "SETGID",
+        "SETUID",
+        "SYS_CHROOT"
+      ],
+      "ports": [
+        "${BBS_BIND_ADDRESS:-0.0.0.0}:${BBS_PORT:-2223}:2222"
+      ],
+      "environment": {
+        "MARS_V2_MARS_ADDRESS": "${BBS_PUBLIC_IPV4:-}",
+        "MARS_V2_DOWNLOAD_HOST": "${BBS_DOWNLOAD_HOST:-mars.ee.msstate.edu.pl}",
+        "MARS_V2_DOWNLOAD_PORT": "${BBS_PORT:-2223}",
+        "MARS_V2_PUBLIC_HOST": "${BBS_PUBLIC_HOST:-mars.ee.msstate.edu.pl}"
+      },
+      "networks": [
+        "gateway"
+      ],
+      "pids_limit": 128,
+      "mem_limit": "256m",
+      "ulimits": {
+        "core": 0,
+        "nofile": {
+          "soft": 1024,
+          "hard": 1024
+        }
+      },
+      "depends_on": {
+        "auth": {
+          "condition": "service_healthy"
+        },
+        "session": {
+          "condition": "service_healthy"
+        },
+        "mail": {
+          "condition": "service_healthy"
+        },
+        "board": {
+          "condition": "service_healthy"
+        },
+        "chat": {
+          "condition": "service_healthy"
+        },
+        "file": {
+          "condition": "service_healthy"
+        },
+        "game": {
+          "condition": "service_healthy"
+        },
+        "information": {
+          "condition": "service_healthy"
+        },
+        "ircbridge": {
+          "condition": "service_healthy"
+        }
+      }
+    },
+    "chat": {
+      "build": {
+        "context": ".",
+        "target": "service"
+      },
+      "image": "mars-hotel-recovered-chat:local",
+      "read_only": true,
+      "cap_drop": [
+        "ALL"
+      ],
+      "security_opt": [
+        "no-new-privileges:true"
+      ],
+      "user": "21006:21006",
+      "tmpfs": [
+        "/tmp:rw,nosuid,nodev,noexec,size=64m"
+      ],
+      "volumes": [
+        "chat_sock:/run/mars-v2/chat",
+        "session_sock:/run/mars-v2/session:ro"
+      ],
+      "restart": "unless-stopped",
+      "command": [
+        "python3",
+        "-m",
+        "marsv2.chatd",
+        "--socket",
+        "/run/mars-v2/chat/chat.sock",
+        "--session-socket",
+        "/run/mars-v2/session/session.sock",
+        "--motd-file",
+        "/opt/mars-v2/assets/chat-motd.txt"
+      ],
+      "network_mode": "none",
+      "environment": {
+        "MARS_V2_HEALTH_SERVICE": "chat"
+      },
+      "healthcheck": {
+        "test": [
+          "CMD",
+          "python3",
+          "-m",
+          "marsv2.health"
+        ],
+        "interval": "5s",
+        "timeout": "3s",
+        "retries": 12,
+        "start_period": "5s"
+      },
+      "pids_limit": 64,
+      "mem_limit": "256m",
+      "ulimits": {
+        "core": 0,
+        "nofile": {
+          "soft": 1024,
+          "hard": 1024
+        }
+      },
+      "depends_on": {
+        "session": {
+          "condition": "service_healthy"
+        }
+      }
+    },
+    "session": {
+      "build": {
+        "context": ".",
+        "target": "service"
+      },
+      "image": "mars-hotel-recovered-session:local",
+      "read_only": true,
+      "cap_drop": [
+        "ALL"
+      ],
+      "security_opt": [
+        "no-new-privileges:true"
+      ],
+      "user": "21002:21002",
+      "tmpfs": [
+        "/tmp:rw,nosuid,nodev,noexec,size=64m"
+      ],
+      "volumes": [
+        "auth_sock:/run/mars-v2/auth:ro",
+        "session_sock:/run/mars-v2/session"
+      ],
+      "restart": "unless-stopped",
+      "command": [
+        "python3",
+        "-m",
+        "marsv2.sessiond",
+        "--socket",
+        "/run/mars-v2/session/session.sock",
+        "--auth-socket",
+        "/run/mars-v2/auth/auth.sock"
+      ],
+      "network_mode": "none",
+      "environment": {
+        "MARS_V2_HEALTH_SERVICE": "session"
+      },
+      "healthcheck": {
+        "test": [
+          "CMD",
+          "python3",
+          "-m",
+          "marsv2.health"
+        ],
+        "interval": "5s",
+        "timeout": "3s",
+        "retries": 12,
+        "start_period": "5s"
+      },
+      "pids_limit": 64,
+      "mem_limit": "256m",
+      "ulimits": {
+        "core": 0,
+        "nofile": {
+          "soft": 1024,
+          "hard": 1024
+        }
+      },
+      "depends_on": {
+        "auth": {
+          "condition": "service_healthy"
+        }
+      }
+    },
+    "mail": {
+      "build": {
+        "context": ".",
+        "target": "service"
+      },
+      "image": "mars-hotel-recovered-mail:local",
+      "read_only": true,
+      "cap_drop": [
+        "ALL"
+      ],
+      "security_opt": [
+        "no-new-privileges:true"
+      ],
+      "user": "21003:21003",
+      "tmpfs": [
+        "/tmp:rw,nosuid,nodev,noexec,size=64m"
+      ],
+      "volumes": [
+        "auth_sock:/run/mars-v2/auth:ro",
+        "mail_sock:/run/mars-v2/mail",
+        "session_sock:/run/mars-v2/session:ro",
+        "mail_data:/var/lib/mars-v2/mail"
+      ],
+      "restart": "unless-stopped",
+      "command": [
+        "python3",
+        "-m",
+        "marsv2.maild",
+        "--db",
+        "/var/lib/mars-v2/mail/mail.db",
+        "--socket",
+        "/run/mars-v2/mail/mail.sock",
+        "--session-socket",
+        "/run/mars-v2/session/session.sock",
+        "--auth-socket",
+        "/run/mars-v2/auth/auth.sock"
+      ],
+      "network_mode": "none",
+      "environment": {
+        "MARS_V2_HEALTH_SERVICE": "mail"
+      },
+      "healthcheck": {
+        "test": [
+          "CMD",
+          "python3",
+          "-m",
+          "marsv2.health"
+        ],
+        "interval": "5s",
+        "timeout": "3s",
+        "retries": 12,
+        "start_period": "5s"
+      },
+      "pids_limit": 64,
+      "mem_limit": "256m",
+      "ulimits": {
+        "core": 0,
+        "nofile": {
+          "soft": 1024,
+          "hard": 1024
+        }
+      },
+      "depends_on": {
+        "auth": {
+          "condition": "service_healthy"
+        }
+      }
+    },
+    "game": {
+      "build": {
+        "context": ".",
+        "target": "service"
+      },
+      "image": "mars-hotel-recovered-game:local",
+      "read_only": true,
+      "cap_drop": [
+        "ALL"
+      ],
+      "security_opt": [
+        "no-new-privileges:true"
+      ],
+      "user": "21010:21010",
+      "tmpfs": [
+        "/tmp:rw,nosuid,nodev,noexec,size=64m"
+      ],
+      "volumes": [
+        "game_sock:/run/mars-v2/game",
+        "session_sock:/run/mars-v2/session:ro",
+        "game_data:/var/lib/mars-v2/game"
+      ],
+      "restart": "unless-stopped",
+      "command": [
+        "python3",
+        "-m",
+        "marsv2.gamed",
+        "--db",
+        "/var/lib/mars-v2/game/game.db",
+        "--socket",
+        "/run/mars-v2/game/game.sock",
+        "--session-socket",
+        "/run/mars-v2/session/session.sock",
+        "--enabled-games",
+        "oregon,wopr,maze,gtw,chess"
+      ],
+      "network_mode": "none",
+      "environment": {
+        "MARS_V2_HEALTH_SERVICE": "game"
+      },
+      "healthcheck": {
+        "test": [
+          "CMD",
+          "python3",
+          "-m",
+          "marsv2.health"
+        ],
+        "interval": "5s",
+        "timeout": "3s",
+        "retries": 12,
+        "start_period": "5s"
+      },
+      "pids_limit": 64,
+      "mem_limit": "512m",
+      "ulimits": {
+        "core": 0,
+        "nofile": {
+          "soft": 1024,
+          "hard": 1024
+        }
+      },
+      "depends_on": {
+        "session": {
+          "condition": "service_healthy"
+        }
+      }
+    },
+    "auth": {
+      "build": {
+        "context": ".",
+        "target": "service"
+      },
+      "image": "mars-hotel-recovered-auth:local",
+      "read_only": true,
+      "cap_drop": [
+        "ALL"
+      ],
+      "security_opt": [
+        "no-new-privileges:true"
+      ],
+      "user": "21001:21001",
+      "tmpfs": [
+        "/tmp:rw,nosuid,nodev,noexec,size=64m"
+      ],
+      "volumes": [
+        "auth_sock:/run/mars-v2/auth",
+        "auth_data:/var/lib/mars-v2/auth"
+      ],
+      "restart": "unless-stopped",
+      "command": [
+        "python3",
+        "-m",
+        "marsv2.authd",
+        "--db",
+        "/var/lib/mars-v2/auth/auth.db",
+        "--socket",
+        "/run/mars-v2/auth/auth.sock"
+      ],
+      "network_mode": "none",
+      "depends_on": {
+        "auth-init": {
+          "condition": "service_completed_successfully"
+        }
+      },
+      "environment": {
+        "MARS_V2_HEALTH_SERVICE": "auth"
+      },
+      "healthcheck": {
+        "test": [
+          "CMD",
+          "python3",
+          "-m",
+          "marsv2.health"
+        ],
+        "interval": "5s",
+        "timeout": "3s",
+        "retries": 12,
+        "start_period": "5s"
+      },
+      "pids_limit": 64,
+      "mem_limit": "256m",
+      "ulimits": {
+        "core": 0,
+        "nofile": {
+          "soft": 1024,
+          "hard": 1024
+        }
+      }
+    },
+    "board": {
+      "build": {
+        "context": ".",
+        "target": "service"
+      },
+      "image": "mars-hotel-recovered-board:local",
+      "read_only": true,
+      "cap_drop": [
+        "ALL"
+      ],
+      "security_opt": [
+        "no-new-privileges:true"
+      ],
+      "user": "21004:21004",
+      "tmpfs": [
+        "/tmp:rw,nosuid,nodev,noexec,size=64m"
+      ],
+      "volumes": [
+        "session_sock:/run/mars-v2/session:ro",
+        "board_data:/var/lib/mars-v2/board",
+        "board_sock:/run/mars-v2/board"
+      ],
+      "restart": "unless-stopped",
+      "command": [
+        "python3",
+        "-m",
+        "marsv2.boardd",
+        "--db",
+        "/var/lib/mars-v2/board/board.db",
+        "--socket",
+        "/run/mars-v2/board/board.sock",
+        "--session-socket",
+        "/run/mars-v2/session/session.sock"
+      ],
+      "network_mode": "none",
+      "environment": {
+        "MARS_V2_HEALTH_SERVICE": "board"
+      },
+      "healthcheck": {
+        "test": [
+          "CMD",
+          "python3",
+          "-m",
+          "marsv2.health"
+        ],
+        "interval": "5s",
+        "timeout": "3s",
+        "retries": 12,
+        "start_period": "5s"
+      },
+      "pids_limit": 64,
+      "mem_limit": "256m",
+      "ulimits": {
+        "core": 0,
+        "nofile": {
+          "soft": 1024,
+          "hard": 1024
+        }
+      },
+      "depends_on": {
+        "session": {
+          "condition": "service_healthy"
+        }
+      }
+    },
+    "file": {
+      "build": {
+        "context": ".",
+        "target": "service"
+      },
+      "image": "mars-hotel-recovered-file:local",
+      "read_only": true,
+      "cap_drop": [
+        "ALL"
+      ],
+      "security_opt": [
+        "no-new-privileges:true"
+      ],
+      "user": "21005:21005",
+      "tmpfs": [
+        "/tmp:rw,nosuid,nodev,noexec,size=64m"
+      ],
+      "volumes": [
+        "file_sock:/run/mars-v2/file",
+        "session_sock:/run/mars-v2/session:ro",
+        "file_data:/var/lib/mars-v2/file"
+      ],
+      "restart": "unless-stopped",
+      "command": [
+        "python3",
+        "-m",
+        "marsv2.filed",
+        "--db",
+        "/var/lib/mars-v2/file/file.db",
+        "--socket",
+        "/run/mars-v2/file/file.sock",
+        "--session-socket",
+        "/run/mars-v2/session/session.sock"
+      ],
+      "network_mode": "none",
+      "environment": {
+        "MARS_V2_HEALTH_SERVICE": "file"
+      },
+      "healthcheck": {
+        "test": [
+          "CMD",
+          "python3",
+          "-m",
+          "marsv2.health"
+        ],
+        "interval": "5s",
+        "timeout": "3s",
+        "retries": 12,
+        "start_period": "5s"
+      },
+      "pids_limit": 64,
+      "mem_limit": "256m",
+      "ulimits": {
+        "core": 0,
+        "nofile": {
+          "soft": 1024,
+          "hard": 1024
+        }
+      },
+      "depends_on": {
+        "session": {
+          "condition": "service_healthy"
+        }
+      }
+    },
+    "information": {
+      "build": {
+        "context": ".",
+        "target": "service"
+      },
+      "image": "mars-hotel-recovered-information:local",
+      "read_only": true,
+      "cap_drop": [
+        "ALL"
+      ],
+      "security_opt": [
+        "no-new-privileges:true"
+      ],
+      "user": "21009:21009",
+      "tmpfs": [
+        "/tmp:rw,nosuid,nodev,noexec,size=64m"
+      ],
+      "volumes": [
+        "information_sock:/run/mars-v2/information",
+        "session_sock:/run/mars-v2/session:ro",
+        "information_data:/var/lib/mars-v2/information"
+      ],
+      "restart": "unless-stopped",
+      "command": [
+        "--db",
+        "/var/lib/mars-v2/information/information.db",
+        "--socket",
+        "/run/mars-v2/information/information.sock",
+        "--session-socket",
+        "/run/mars-v2/session/session.sock"
+      ],
+      "entrypoint": [
+        "python3",
+        "-m",
+        "marsv2.informationd"
+      ],
+      "networks": [
+        "information"
+      ],
+      "environment": {
+        "MARS_V2_HEALTH_SERVICE": "information",
+        "MARS_INFORMATION_USER_AGENT": "${MARS_INFORMATION_USER_AGENT:-MarsHotelInformationNetwork/1.0}"
+      },
+      "healthcheck": {
+        "test": [
+          "CMD",
+          "python3",
+          "-m",
+          "marsv2.health"
+        ],
+        "interval": "5s",
+        "timeout": "3s",
+        "retries": 12,
+        "start_period": "5s"
+      },
+      "pids_limit": 64,
+      "mem_limit": "256m",
+      "ulimits": {
+        "core": 0,
+        "nofile": {
+          "soft": 1024,
+          "hard": 1024
+        }
+      },
+      "depends_on": {
+        "session": {
+          "condition": "service_healthy"
+        }
+      }
+    },
+    "ircbridge": {
+      "build": {
+        "context": ".",
+        "target": "service"
+      },
+      "image": "mars-hotel-recovered-ircbridge:local",
+      "read_only": true,
+      "cap_drop": [
+        "ALL"
+      ],
+      "security_opt": [
+        "no-new-privileges:true"
+      ],
+      "user": "21007:21007",
+      "tmpfs": [
+        "/tmp:rw,nosuid,nodev,noexec,size=64m"
+      ],
+      "volumes": [
+        "irc_sock:/run/mars-v2/irc",
+        "session_sock:/run/mars-v2/session:ro",
+        "./secrets/irc.crt:/run/secrets/irc.crt:ro",
+        "./secrets/irc_client_password:/run/secrets/irc_password:ro"
+      ],
+      "restart": "unless-stopped",
+      "command": [
+        "python3",
+        "-m",
+        "marsv2.ircbridge",
+        "--socket",
+        "/run/mars-v2/irc/irc.sock",
+        "--session-socket",
+        "/run/mars-v2/session/session.sock",
+        "--host",
+        "irc.mars-v2.local",
+        "--port",
+        "6697",
+        "--server-name",
+        "irc.mars-v2.local",
+        "--cafile",
+        "/run/secrets/irc.crt",
+        "--password-file",
+        "/run/secrets/irc_password",
+        "--public-host",
+        "${PUBLIC_IRC_HOST:-magnumbbs.net}",
+        "--public-port",
+        "${PUBLIC_IRC_PORT:-6697}",
+        "--public-server-name",
+        "${PUBLIC_IRC_SERVER_NAME:-magnumbbs.net}",
+        "--public-channel",
+        "${PUBLIC_IRC_CHANNEL:-#MarsHotel}"
+      ],
+      "networks": [
+        "irc",
+        "outbound"
+      ],
+      "environment": {
+        "MARS_V2_HEALTH_SERVICE": "irc"
+      },
+      "healthcheck": {
+        "test": [
+          "CMD",
+          "python3",
+          "-m",
+          "marsv2.health"
+        ],
+        "interval": "5s",
+        "timeout": "3s",
+        "retries": 12,
+        "start_period": "5s"
+      },
+      "pids_limit": 64,
+      "mem_limit": "256m",
+      "ulimits": {
+        "core": 0,
+        "nofile": {
+          "soft": 1024,
+          "hard": 1024
+        }
+      },
+      "depends_on": {
+        "session": {
+          "condition": "service_healthy"
+        }
+      }
+    },
+    "irc": {
+      "build": {
+        "context": ".",
+        "target": "irc"
+      },
+      "image": "mars-hotel-recovered-irc:local",
+      "read_only": true,
+      "cap_drop": [
+        "ALL"
+      ],
+      "security_opt": [
+        "no-new-privileges:true"
+      ],
+      "user": "10002:10002",
+      "tmpfs": [
+        "/tmp:rw,nosuid,nodev,noexec,size=64m",
+        "/run/mars-irc:rw,nosuid,nodev,noexec,uid=10002,gid=10002,mode=0700"
+      ],
+      "volumes": [
+        "./secrets/irc_server_password:/run/secrets/irc_password:ro",
+        "./config/irc-conf.d:/etc/ngircd/conf.d:ro",
+        "./secrets/irc.crt:/run/secrets/irc.crt:ro",
+        "./secrets/irc.key:/run/secrets/irc.key:ro"
+      ],
+      "restart": "unless-stopped",
+      "networks": {
+        "irc": {
+          "aliases": [
+            "irc.mars-v2.local"
+          ]
+        }
+      },
+      "pids_limit": 64,
+      "mem_limit": "256m",
+      "ulimits": {
+        "core": 0,
+        "nofile": {
+          "soft": 1024,
+          "hard": 1024
+        }
+      }
+    },
+    "auth-init": {
+      "build": {
+        "context": ".",
+        "target": "service"
+      },
+      "image": "mars-hotel-recovered-auth-init:local",
+      "user": "0:0",
+      "network_mode": "none",
+      "read_only": true,
+      "cap_drop": [
+        "ALL"
+      ],
+      "cap_add": [
+        "CHOWN",
+        "FOWNER",
+        "DAC_OVERRIDE"
+      ],
+      "security_opt": [
+        "no-new-privileges:true"
+      ],
+      "volumes": [
+        "auth_data:/var/lib/mars-v2/auth",
+        "./secrets/admin_password:/run/secrets/admin_password:ro"
+      ],
+      "command": [
+        "python3",
+        "-m",
+        "marsv2.bootstrap",
+        "--db",
+        "/var/lib/mars-v2/auth/auth.db",
+        "--admin-password-file",
+        "/run/secrets/admin_password"
+      ],
+      "restart": "no"
+    },
+    "door": {
+      "profiles": [
+        "doors"
+      ],
+      "build": {
+        "context": ".",
+        "dockerfile": "Dockerfile.door"
+      },
+      "image": "${MARS_DOOR_IMAGE:-mars-hotel-recovered-door:local}",
+      "user": "21011:21011",
+      "network_mode": "none",
+      "read_only": true,
+      "cap_drop": [
+        "ALL"
+      ],
+      "security_opt": [
+        "no-new-privileges:true",
+        "seccomp=./security/door-seccomp.json"
+      ],
+      "tmpfs": [
+        "/tmp:rw,exec,nosuid,nodev,uid=21011,gid=21011,mode=0700,size=64m"
+      ],
+      "volumes": [
+        "door_data:/var/lib/mars-v2/door",
+        "door_sock:/run/mars-v2/door",
+        "session_sock:/run/mars-v2/session:ro",
+        "./licensed-doors:/opt/mars-doors/templates:ro"
+      ],
+      "depends_on": {
+        "session": {
+          "condition": "service_healthy"
+        }
+      },
+      "command": [
+        "--root",
+        "/var/lib/mars-v2/door",
+        "--template-root",
+        "/opt/mars-doors/templates",
+        "--socket",
+        "/run/mars-v2/door/door.sock",
+        "--play-socket",
+        "/run/mars-v2/door/play.sock",
+        "--session-socket",
+        "/run/mars-v2/session/session.sock",
+        "--enabled-doors",
+        "${MARS_ENABLED_DOORS:-zork,lord}",
+        "--lord-nodes",
+        "${MARS_LORD_NODES:-4}"
+      ],
+      "pids_limit": 96,
+      "mem_limit": "512m",
+      "ulimits": {
+        "core": 0,
+        "nofile": {
+          "soft": 1024,
+          "hard": 1024
+        }
+      },
+      "healthcheck": {
+        "test": [
+          "CMD",
+          "python3",
+          "-m",
+          "marsv2.health"
+        ],
+        "interval": "10s",
+        "timeout": "3s",
+        "retries": 20,
+        "start_period": "180s"
+      }
+    }
+  },
+  "volumes": {
+    "session_sock": {},
+    "ssh_hostkeys": {},
+    "auth_sock": {},
+    "door_sock": {},
+    "game_sock": {},
+    "irc_sock": {},
+    "board_sock": {},
+    "chat_sock": {},
+    "file_sock": {},
+    "information_sock": {},
+    "mail_sock": {},
+    "mail_data": {},
+    "game_data": {},
+    "auth_data": {},
+    "board_data": {},
+    "file_data": {},
+    "information_data": {},
+    "door_data": {}
+  },
+  "networks": {
+    "gateway": {
+      "driver_opts": {
+        "com.docker.network.bridge.enable_ip_masquerade": "false"
+      }
+    },
+    "information": {},
+    "irc": {
+      "internal": true
+    },
+    "outbound": {}
+  }
+}

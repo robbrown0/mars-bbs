@@ -1,0 +1,73 @@
+THE MARS HOTEL BBS
+
+The Mars Hotel was a public-access bulletin board associated with Mississippi
+State University's Electrical Engineering department. Contemporary records
+place it at mars.ee.msstate.edu, address 130.18.64.3, and describe a Sun
+SPARCstation 4/110 running Pirate BBS.
+
+WHY IT STOOD OUT
+
+Mars was more than a collection of message boards. Surviving software and
+period listings describe Boards, Mail, Talk, Chat, IRC, and a large file
+collection. A visitor could move from asynchronous discussions to live local
+conversation without leaving the BBS. That combination is the experience this
+Revival tries to preserve.
+
+A contemporary description also associated Mars with FTP-accessible files and
+Kermit, Xmodem, Ymodem, and Zmodem transfers. Surviving references mention
+software and text collections for MS-DOS, Amiga, Macintosh, Commodore, Apple,
+graphics, communications, games, source code, and general text.
+
+A SHORT TIMELINE
+
+1990
+  Edward Luke's Pirate Bulletin Board System carries a 1990 copyright. Its
+  design is a multiuser Unix BBS rather than a single-line microcomputer BBS.
+
+November 25, 1991
+  The ReadMe shipped with Pirate BBS 1.9 says: "This is the code that was
+  running on the Mars Hotel BBS." This is the strongest surviving primary
+  evidence for the software behavior at Mars.
+
+1991-era real-time communication
+  Talk was a private, two-person split-screen conversation. Chat was a local
+  broadcast service with an eight-character alias and an on-demand daemon.
+  IRC was separate: Pirate launched an IRC 2.5.1 client using the BBS userid
+  and the Mars host. Pirate help called it an IRC link with QuartzBBS.
+
+1992
+  A Linux-era note says the system returned around October 7, 1992 on
+  jupiter.ee.msstate.edu, address 130.18.64.37. The exact operational history
+  between the two hosts has not been fully recovered.
+
+Later years
+  Eagles BBS carried the Pirate design forward on Linux. It expanded native
+  Chat with rooms, presence, private messages, actions, invitations, ignore
+  lists, and operators. Eagles is the direct software lineage from which this
+  restoration work began.
+
+THE SURVIVING FILE CATALOG
+
+The original mars.lst and mars.inf records survived on the FUNET archive.
+The listing contains 1,132 catalog records across 24 categories. It is a map of
+what the FTP collection advertised, not a backup of every payload. The Revival
+lets visitors browse that historical catalog separately from files that were
+actually recovered, reviewed, and published.
+
+WHAT HAS NOT BEEN RECOVERED
+
+No verified production board database, private-mail store, user database,
+site-specific welcome screen, menu set, local Chat transcript, IRC channel
+configuration, or full Mars filesystem backup is known to this project.
+
+That gap matters. Sample data from a Pirate distribution is not Mars content,
+and a modern file with a matching name is not automatically the same historical
+copy. The Revival labels evidence, corroborated variants, curated additions,
+and reconstruction separately.
+
+WHY REBUILD IT
+
+Early network communities felt like places. Mars combined a memorable name,
+a university Unix host, public writing, private correspondence, shared files,
+and live presence. Restoring those interactions preserves more than software:
+it preserves a way people encountered one another online.

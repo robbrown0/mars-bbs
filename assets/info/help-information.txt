@@ -1,0 +1,55 @@
+MARS INFORMATION NETWORK
+
+The Information Network is a collection of current reports delivered through
+the BBS. Press D in the Lobby, then use keys 0 through 9. X returns to the
+previous screen. Lists use the Up/Down arrow keys and Enter opens a selection.
+
+The BBS never contacts a provider while drawing a terminal screen.  A separate
+background collector retrieves bounded HTTPS responses, validates and cleans
+them, and stores a local last-known-good cache.  Every report identifies its
+source and update time.  STALE means the provider is temporarily unavailable
+and the most recent successful report is being shown.  UNAVAILABLE means there
+is no validated cached report.
+
+WEATHER
+
+Choose a location by city, state/province, country, or postal code.  The choice
+is private to your BBS account.  Forecast data comes from Open-Meteo; active
+United States warnings come from NOAA/National Weather Service.  Forecasts are
+guidance, not emergency instructions.  Follow local authorities during severe
+weather.
+
+NEWS WIRES
+
+Headlines and provider-supplied summaries are displayed with attribution.
+SUMMARY means the BBS does not reproduce the publisher's full article.  No
+paywall or article page is scraped.
+
+SOLAR AND AMATEUR RADIO
+
+The display uses observed NOAA Space Weather Prediction Center products.  It
+does not invent band openings from a few indices.  The notes page explains the
+limits of solar flux and Kp as propagation indicators.
+
+EARTHQUAKES AND ISS
+
+Earthquakes use official USGS feeds.  ISS positions and passes are predictions
+calculated locally from current CelesTrak orbital elements, not live spacecraft
+telemetry.  Set a Weather Center location before requesting local passes.
+
+FINANCIAL MARKETS
+
+Massive Basic supplies end-of-day values. The board shows the real Nasdaq
+Composite plus clearly labelled DIA, SPY, and QQQ ETF proxies; those ETF prices
+are not presented as the underlying Dow, S&P, or Nasdaq index values. Press L
+to look up a U.S. stock or ETF symbol. Every screen identifies the delay and
+source. Quotes are informational and are not investment advice.
+
+MOVIES AND TELEVISION
+
+The Screening Room lists recent and upcoming American film releases, new
+television-series premieres, and returning seasons. Film dates come from the
+current Wikipedia film calendar. Television schedules come from TVmaze and
+include U.S. broadcast/cable plus globally scheduled streaming premieres.
+Both sources are credited under their CC BY-SA terms. Announced dates can
+change; this is a release calendar, not a guarantee of local availability.

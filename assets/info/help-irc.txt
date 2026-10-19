@@ -1,0 +1,74 @@
+IRC AND THE PUBLIC MARSHOTEL ROOM
+
+Choose [I]RC in the Lobby, then:
+
+  [L]ocal IRC       Open the embedded client on Mars's private IRC service
+  [M]arsHotel       Connect directly to Synchronet #MarsHotel
+  [X] Exit           Return to the Lobby
+
+Both choices use the same IRC screen, command set, input history, presence,
+private messages, actions, topics, and help. Local IRC stays on the private
+Mars network. MarsHotel connects your authenticated BBS userid directly to the
+public Synchronet channel as an IRC nickname. If that nickname is already in
+use, the client selects a visible MH_ fallback. The public connection is
+limited to #MarsHotel and does not grant IRC users a BBS account, private-mail,
+file, Direct Talk, administration, or shell path.
+
+An isolated, always-on MarsHotel channel keeper identifies with NickServ,
+maintains the channel registration and topic, and answers !info. It does not
+relay native Chat and has no BBS session or data access. Native Chat remains a
+separate local-only service in the Talk Center.
+
+EMBEDDED IRC
+
+IRC is separate from native Chat. It uses your authenticated BBS userid as the
+IRC nickname and connects only through the restricted project-owned bridge.
+Local startup is:
+
+  Connecting to local IRC...
+  Connected to local IRC as userid on #lobby.
+  Commands and the [#lobby] userid> prompt
+
+Public startup uses the same interface:
+
+  Connecting to MarsHotel public IRC...
+  Connected to MarsHotel public IRC as userid on #MarsHotel.
+  Commands and the [#MarsHotel] userid> prompt
+
+Commands:
+
+  /join #channel       Join and switch to a channel
+  /part [reason]       Leave the current channel
+  /channels [filter]   List visible channels, bounded to 100 results
+  /names [#channel]   List channel nicknames
+  /who [#channel]     Show channel presence
+  /whois nick          Show public IRC identity details
+  /msg nick text       Send a private IRC message
+  /notice nick text    Send a private notice
+  /me action           Send a traditional IRC action
+  /topic [text|-]      View, set, or clear the channel topic
+  /away [message]      Mark yourself away
+  /back                Clear away status
+  /motd                Show the server message of the day
+  /time                Show server time
+  /version             Show server version
+  /invite nick         Invite a nick; server permissions apply
+  /kick nick [reason]  Kick a nick; channel-operator permission required
+  /mode [modes [nick]] View or change channel modes; permissions apply
+  /help [command]      Show command help; /help all lists everything
+  /exit                Return to the IRC Center
+
+Ordinary text is sent to the current channel. The prompt changes after a
+confirmed channel join. Up and Down browse memory-only history for this IRC
+visit while preserving a partially typed draft.
+
+This is intentionally not an unrestricted IRC client. On the public network,
+channel-scoped operations are limited to #MarsHotel. Raw commands, nickname
+changes, arbitrary server selection, DCC, scripts, plugins, file paths, shell
+execution, and user-written IRC configuration are unavailable. The IRC server
+still enforces channel and operator privileges. `/quit` is an accepted alias
+for `/exit`.
+
+The exact Mars IRC 2.5.1 screen and prompt were not recovered. This interface
+is a safe reconstruction using period IRC concepts and correct protocol
+operations; it is not presented as a verbatim historical client.
