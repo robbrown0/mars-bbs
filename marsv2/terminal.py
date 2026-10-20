@@ -101,6 +101,10 @@ class KeyDecoder:
             return KEY_INTERRUPT, ""
         if raw == b"\x04":
             return KEY_EOF, ""
+        # Mobile SSH keyboards commonly expose Ctrl but omit function keys.
+        # Treat Ctrl-S as the portable equivalent of F2 in full-screen editors.
+        if raw == b"\x13":
+            return KEY_F2, ""
         if value < 32:
             return KEY_INVALID, f"control-{value}"
         try:

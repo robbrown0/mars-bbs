@@ -805,7 +805,16 @@ def _draw_mail_editor(recipient: str, subject: str, buffer: EditorBuffer,
     size = shutil.get_terminal_size((80, 24))
     columns = max(20, min(120, size.columns))
     screen_lines = max(12, size.lines)
-    body_height = max(3, screen_lines - 8)
+    separator = "-" * columns
+    if mode in ("confirm_send", "confirm_cancel"):
+        help_text = "Press Y to confirm or N to return to the editor"
+    else:
+        help_text = (f"F2/Ctrl-S {submit_label}  Esc cancel  Arrows move  "
+                     "Home/End  PgUp/PgDn"
+                     + ("  F3 draft" if allow_draft else ""))
+    help_lines = textwrap.wrap(help_text, width=columns, break_long_words=False,
+                               break_on_hyphens=False) or [""]
+    body_height = max(3, screen_lines - 7 - len(help_lines))
     wrap_width = max(20, columns - 1)
     visual, cursor_row, cursor_column = buffer.visual_position(wrap_width)
     if cursor_row < scroll:
@@ -814,12 +823,6 @@ def _draw_mail_editor(recipient: str, subject: str, buffer: EditorBuffer,
         scroll = cursor_row - body_height + 1
     scroll = max(0, min(scroll, max(0, len(visual) - body_height)))
 
-    separator = "-" * columns
-    if mode in ("confirm_send", "confirm_cancel"):
-        help_line = "Press Y to confirm or N to return to the editor"
-    else:
-        help_line = (f"Arrows move  Home/End  PgUp/PgDn  Esc cancel  F2 {submit_label}"
-                     + ("  F3 draft" if allow_draft else ""))
     sys.stdout.write("\033[?25l\033[2J\033[H")
     sys.stdout.write(styled(clip(editor_title, columns), BOLD, CYAN) + "\r\n")
     sys.stdout.write(styled(separator, DIM) + "\r\n")
@@ -834,7 +837,8 @@ def _draw_mail_editor(recipient: str, subject: str, buffer: EditorBuffer,
         else:
             sys.stdout.write("\r\n")
     sys.stdout.write(styled(separator, DIM) + "\r\n")
-    sys.stdout.write(clip(help_line, columns) + "\r\n")
+    for help_line in help_lines:
+        sys.stdout.write(clip(help_line, columns) + "\r\n")
     sys.stdout.write(clip(status, columns))
     terminal_row = 6 + cursor_row - scroll
     terminal_column = 1 + min(cursor_column, wrap_width)
@@ -1440,8 +1444,11 @@ def mail(token: str) -> None:
             pause()
             return
         print()
-        print(styled("[↑/↓] move [Enter/R] open [C] compose [G] group mail [D] delete", DIM))
-        print(styled("[I/O/V] folders  [X] exit", DIM))
+        controls = ("[↑/↓] move  [Enter/R] open  [C] compose  [G] group mail  "
+                    "[D] delete  [I/O/V] folders  [X/Esc] exit")
+        for line in textwrap.wrap(controls, width=max(20, width()),
+                                  break_long_words=False, break_on_hyphens=False):
+            print(styled(line, DIM))
         try:
             choice = key_input("Mail> ")
             if choice in ("q", "x"):

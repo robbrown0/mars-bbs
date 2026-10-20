@@ -3,12 +3,16 @@
 
 from __future__ import annotations
 
+import contextlib
+import io
 import os
+from unittest.mock import patch
 
 from marsv2.terminal import (
     EditorBuffer, KeyDecoder, KEY_DELETE, KEY_DOWN, KEY_F2, KEY_HOME,
     KEY_INVALID, KEY_LEFT, KEY_PAGE_DOWN, KEY_UP,
 )
+from marsv2.ui import _draw_mail_editor
 
 
 buffer = EditorBuffer("alpha\nbrvo\ncharlie", 128)
@@ -58,7 +62,23 @@ assert decode(b"\x1b[H")[0] == KEY_HOME
 assert decode(b"\x1b[3~")[0] == KEY_DELETE
 assert decode(b"\x1b[6~")[0] == KEY_PAGE_DOWN
 assert decode(b"\x1bOQ")[0] == KEY_F2
+assert decode(b"\x13")[0] == KEY_F2
 assert decode(b"\x1b[999z")[0] == KEY_INVALID
 assert decode(b"\x01")[0] == KEY_INVALID
+
+# The phone-sized view must show the send and cancel controls instead of
+# clipping them beyond the right edge of the terminal.
+rendered = io.StringIO()
+with patch("marsv2.ui.shutil.get_terminal_size",
+           return_value=os.terminal_size((58, 24))):
+    with contextlib.redirect_stdout(rendered):
+        _draw_mail_editor(
+            "rob", "tst", EditorBuffer("", 8192), 0,
+            "0 / 8192 characters", "edit", "POST OFFICE - COMPOSE",
+            "To", "Send", True,
+        )
+output = rendered.getvalue()
+assert "F2/Ctrl-S Send" in output
+assert "Esc cancel" in output
 
 print("PASS bounded editor model and terminal key decoder")
