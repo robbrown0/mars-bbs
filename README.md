@@ -10,7 +10,7 @@ ssh bbs@mars.ee.msstate.edu.pl -p 2223
 
 Every visitor reaches a forced BBS command and must authenticate to an application account. Guest and anonymous BBS sessions are not supported. Telnet is not configured.
 
-The recovered implementation includes account and session management, private mail, message boards, Direct Talk and public chat, internal IRC and bridge support, file libraries, Oregon Trail, WOPR, Maze, Global Thermonuclear War, chess, information collectors, administrative functions and the retro terminal UI. Optional door support covers Zork and registered LORD 4.02a. The public LORD archive and the verified public registration are included; Zork story data must be supplied separately. The recovered source contains dormant TradeWars integration residue, but TradeWars was not installed or offered by The Mars Hotel. The Python game named `gtw` is Global Thermonuclear War, not TradeWars.
+The recovered implementation includes account and session management, local and linked-BBS private mail, message boards, Direct Talk and public chat, internal IRC and bridge support, file libraries, Oregon Trail, WOPR, Maze, Global Thermonuclear War, chess, information collectors, administrative functions and the retro terminal UI. A Sysop can name the installation and pair it with trusted BBS peers for authenticated text-only mail addressed as `user@bbs-id`. Optional door support covers Zork and registered LORD 4.02a. The public LORD archive and the verified public registration are included; Zork story data must be supplied separately. The recovered source contains dormant TradeWars integration residue, but TradeWars was not installed or offered by The Mars Hotel. The Python game named `gtw` is Global Thermonuclear War, not TradeWars.
 
 ## Deploy a fresh instance
 
@@ -34,6 +34,7 @@ The base deployment is independently buildable without Unraid paths or productio
 - [Architecture](docs/architecture.md)
 - [Installation and deployment](docs/deployment.md)
 - [Security](docs/security.md)
+- [Trusted BBS mail links](docs/federation.md)
 - [Testing](docs/testing.md)
 - [Backup and restore](docs/backup-restore.md)
 - [Doors and licensed game data](docs/doors.md)

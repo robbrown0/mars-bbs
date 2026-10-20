@@ -19,7 +19,7 @@ ROLE_CAPABILITIES: dict[str, frozenset[str]] = {
         "account.view", "account.manage", "account.password_reset",
         "account.delete", "account.roles",
         "board.manage", "board.moderate", "session.manage",
-        "audit.read", "system.health",
+        "audit.read", "system.health", "federation.manage",
     }),
 }
 
@@ -35,13 +35,13 @@ ROLE_DESCRIPTIONS: dict[str, str] = {
     ),
     "Sysop": (
         "Full BBS administrator: accounts and roles, boards, sessions, audit log, "
-        "and application health."
+        "application health, BBS identity, and trusted mail links."
     ),
 }
 ADMIN_CONSOLE_CAPABILITIES = frozenset({
     "account.view", "account.manage", "account.password_reset", "account.delete",
     "account.roles", "board.manage", "board.moderate", "session.manage",
-    "audit.read", "system.health",
+    "audit.read", "system.health", "federation.manage",
 })
 
 

@@ -238,7 +238,8 @@
         "auth_sock:/run/mars-v2/auth:ro",
         "mail_sock:/run/mars-v2/mail",
         "session_sock:/run/mars-v2/session:ro",
-        "mail_data:/var/lib/mars-v2/mail"
+        "mail_data:/var/lib/mars-v2/mail",
+        "./secrets/federation.crt:/run/secrets/federation.crt:ro"
       ],
       "restart": "unless-stopped",
       "command": [
@@ -252,7 +253,11 @@
         "--session-socket",
         "/run/mars-v2/session/session.sock",
         "--auth-socket",
-        "/run/mars-v2/auth/auth.sock"
+        "/run/mars-v2/auth/auth.sock",
+        "--peer-secret-dir",
+        "/var/lib/mars-v2/mail/peer-secrets",
+        "--certificate",
+        "/run/secrets/federation.crt"
       ],
       "network_mode": "none",
       "environment": {
@@ -281,6 +286,85 @@
       },
       "depends_on": {
         "auth": {
+          "condition": "service_healthy"
+        }
+      }
+    },
+    "mail-exchange": {
+      "build": {
+        "context": ".",
+        "target": "service"
+      },
+      "image": "mars-hotel-recovered-mail-exchange:local",
+      "read_only": true,
+      "cap_drop": [
+        "ALL"
+      ],
+      "security_opt": [
+        "no-new-privileges:true"
+      ],
+      "user": "21003:21003",
+      "tmpfs": [
+        "/tmp:rw,nosuid,nodev,noexec,size=32m"
+      ],
+      "volumes": [
+        "auth_sock:/run/mars-v2/auth:ro",
+        "mail_data:/var/lib/mars-v2/mail",
+        "./secrets/federation.crt:/run/secrets/federation.crt:ro",
+        "./secrets/federation.key:/run/secrets/federation.key:ro"
+      ],
+      "restart": "unless-stopped",
+      "command": [
+        "python3",
+        "-m",
+        "marsv2.federationd",
+        "--db",
+        "/var/lib/mars-v2/mail/mail.db",
+        "--auth-socket",
+        "/run/mars-v2/auth/auth.sock",
+        "--peer-secret-dir",
+        "/var/lib/mars-v2/mail/peer-secrets",
+        "--certificate",
+        "/run/secrets/federation.crt",
+        "--private-key",
+        "/run/secrets/federation.key",
+        "--bind",
+        "0.0.0.0",
+        "--port",
+        "2443"
+      ],
+      "ports": [
+        "${BBS_FEDERATION_BIND_ADDRESS:-127.0.0.1}:${BBS_FEDERATION_PORT:-2443}:2443"
+      ],
+      "networks": [
+        "federation"
+      ],
+      "healthcheck": {
+        "test": [
+          "CMD",
+          "python3",
+          "-m",
+          "marsv2.federation_health"
+        ],
+        "interval": "10s",
+        "timeout": "3s",
+        "retries": 12,
+        "start_period": "5s"
+      },
+      "pids_limit": 32,
+      "mem_limit": "128m",
+      "ulimits": {
+        "core": 0,
+        "nofile": {
+          "soft": 512,
+          "hard": 512
+        }
+      },
+      "depends_on": {
+        "auth": {
+          "condition": "service_healthy"
+        },
+        "mail": {
           "condition": "service_healthy"
         }
       }
@@ -880,6 +964,7 @@
     "irc": {
       "internal": true
     },
-    "outbound": {}
+    "outbound": {},
+    "federation": {}
   }
 }

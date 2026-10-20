@@ -11,8 +11,16 @@ if [ ! -e secrets/irc_client_password ]; then cp secrets/irc_server_password sec
 if [ ! -e secrets/irc.key ] && [ ! -e secrets/irc.crt ]; then
  openssl req -x509 -newkey rsa:3072 -sha256 -nodes -days 365 -subj /CN=irc.mars-v2.local -addext subjectAltName=DNS:irc.mars-v2.local -keyout secrets/irc.key -out secrets/irc.crt >/dev/null 2>&1
 fi
+if [ ! -e secrets/federation.key ] && [ ! -e secrets/federation.crt ]; then
+ openssl req -x509 -newkey rsa:3072 -sha256 -nodes -days 825 \
+  -subj /CN=mars-bbs-federation -addext subjectAltName=DNS:mars-bbs-federation \
+  -keyout secrets/federation.key -out secrets/federation.crt >/dev/null 2>&1
+fi
 chown 10002:10002 secrets/irc_server_password secrets/irc.key
 chown 21007:21007 secrets/irc_client_password
+chown 21003:21003 secrets/federation.key
 chmod 0400 secrets/admin_password secrets/irc_server_password secrets/irc_client_password secrets/irc.key
 chmod 0444 secrets/irc.crt
+chmod 0400 secrets/federation.key
+chmod 0444 secrets/federation.crt
 echo 'Runtime secrets initialized. Read secrets/admin_password locally for the initial admin login.'

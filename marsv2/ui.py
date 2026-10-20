@@ -1025,6 +1025,18 @@ def _recipient_directory(token: str) -> list[dict[str, object]]:
             if (isinstance(user, dict) and isinstance(user.get("userid"), str)
                     and isinstance(user.get("display_name"), str)):
                 users.append(user)
+        if offset == 0:
+            peers = result.get("peers", [])
+            if isinstance(peers, list):
+                for peer in peers:
+                    if (isinstance(peer, dict) and isinstance(peer.get("bbs_id"), str)
+                            and isinstance(peer.get("bbs_name"), str)):
+                        users.append({
+                            "userid": "@" + str(peer["bbs_id"]),
+                            "display_name": (str(peer["bbs_name"])
+                                             + " — type user@" + str(peer["bbs_id"])),
+                            "peer_hint": True,
+                        })
         following = result.get("next_offset")
         if following is None:
             return users
@@ -1049,7 +1061,7 @@ def _draw_recipient_picker(users: list[dict[str, object]], query: EditorBuffer,
     sys.stdout.write("\033[?25l\033[2J\033[H")
     sys.stdout.write(styled(clip("POST OFFICE - CHOOSE RECIPIENT", columns),
                             BOLD, CYAN) + "\r\n")
-    sys.stdout.write(styled(clip("Type to filter the user directory.", columns),
+    sys.stdout.write(styled(clip("Type a local userid or user@linked-bbs.", columns),
                             DIM) + "\r\n")
     sys.stdout.write(("Search: " + safe_text(query.text))[:columns] + "\r\n")
     sys.stdout.write(styled("-" * columns, DIM) + "\r\n")
@@ -1059,7 +1071,7 @@ def _draw_recipient_picker(users: list[dict[str, object]], query: EditorBuffer,
             name = safe_text(user["userid"])
             display = safe_text(user["display_name"])
             suffix = "  (you)" if name.casefold() == own_user else ""
-            line = clip(f"{name:<12} {display}{suffix}", columns)
+            line = clip(f"{name:<20} {display}{suffix}", columns)
             sys.stdout.write((styled(line, REVERSE) if position == cursor else line) + "\r\n")
         for _ in range(visible_rows - min(visible_rows, len(matches) - start)):
             sys.stdout.write("\r\n")
@@ -1085,7 +1097,7 @@ def choose_mail_recipient(token: str, default: str = "") -> str | None:
     users = _recipient_directory(token)
     if not users:
         raise RPCError("No mail recipients are available.")
-    query = EditorBuffer(default, 32)
+    query = EditorBuffer(default, 45)
     decoder = KeyDecoder()
     cursor = 0
     status = ""
@@ -1114,9 +1126,18 @@ def choose_mail_recipient(token: str, default: str = "") -> str | None:
             if key in (KEY_EOF, KEY_INTERRUPT, KEY_ESCAPE):
                 return None
             if key == KEY_ENTER:
-                if matches:
+                if "@" in query.text:
+                    try:
+                        return str(call("mail", "resolve_recipient", {
+                            "recipient": query.text}, token)["userid"])
+                    except RPCError as exc:
+                        status = safe_text(exc)
+                elif matches and not matches[cursor].get("peer_hint"):
                     return str(matches[cursor]["userid"])
-                status = "No user selected; change the search or press Esc to cancel."
+                elif matches:
+                    status = "Type a recipient userid before the linked BBS address."
+                else:
+                    status = "No user selected; change the search or press Esc to cancel."
             elif key == KEY_UP:
                 cursor = max(0, cursor - 1)
             elif key == KEY_DOWN:
@@ -1145,7 +1166,7 @@ def choose_mail_recipient(token: str, default: str = "") -> str | None:
                 if query.insert(value):
                     cursor = 0
                 else:
-                    status = "Search is limited to 32 characters."
+                    status = "Search is limited to 45 characters."
             elif key == KEY_INVALID:
                 status = "Unsupported terminal key ignored."
     finally:
@@ -1212,7 +1233,10 @@ def send_mail(token: str, recipient: str = "", subject: str = "", body: str = ""
             if input("Return to the editor? [Y/n] ").strip().lower() not in ("n", "no"):
                 continue
             return False
-        print(f"Mail delivered to {chosen} as message #{result['id']}.")
+        if int(result.get("queued", 0)):
+            print(f"Mail queued securely for {chosen} as message #{result['id']}.")
+        else:
+            print(f"Mail delivered to {chosen} as message #{result['id']}.")
         pause()
         return True
 
@@ -1246,7 +1270,10 @@ def send_group_mail(token: str, initial: list[str] | None = None,
     result = call("mail", "send", {"recipients": recipients,
                                      "subject": chosen_subject,
                                      "body": _signed_body(composed)}, token)
-    print(f"Group mail delivered to {int(result['delivered'])} member(s).")
+    delivered = int(result.get("delivered", 0))
+    queued = int(result.get("queued", 0))
+    print(f"Group mail: {delivered} local delivery/deliveries, "
+          f"{queued} remote delivery/deliveries queued.")
     pause()
     return True
 
@@ -1270,7 +1297,9 @@ def _draw_mail_message(message: dict[str, object], folder: str, offset: int) -> 
     # Five header rows, one body separator, the help rows, and the prompt must
     # all fit inside the negotiated terminal height. The previous fixed
     # subtraction was one row short even before its help text wrapped.
-    body_height = max(1, max(12, size.lines) - 7 - len(help_lines))
+    delivery_line = int(folder == "sent"
+                        and message.get("exchange_state") not in (None, "delivered"))
+    body_height = max(1, max(12, size.lines) - 7 - len(help_lines) - delivery_line)
     lines = _wrapped_body(message["body"], columns)
     offset = max(0, min(offset, max(0, len(lines) - body_height)))
     other = message["recipient_user"] if folder == "sent" else message["sender_user"]
@@ -1281,6 +1310,9 @@ def _draw_mail_message(message: dict[str, object], folder: str, offset: int) -> 
     sys.stdout.write(styled("=" * columns, DIM) + "\r\n")
     sys.stdout.write(clip(f"{direction}: {other}  /  {stamp(message['created_at'])}", columns) + "\r\n")
     sys.stdout.write(clip("Subject: " + safe_text(message["subject"]), columns) + "\r\n")
+    if folder == "sent" and message.get("exchange_state") not in (None, "delivered"):
+        status = str(message.get("exchange_state", "")).upper()
+        sys.stdout.write(clip("Remote delivery: " + status, columns) + "\r\n")
     sys.stdout.write(styled("-" * columns, DIM) + "\r\n")
     for index in range(offset, offset + body_height):
         sys.stdout.write((lines[index] if index < len(lines) else "") + "\r\n")
@@ -2870,7 +2902,7 @@ def utilities(identity: dict[str, object]) -> None:
 ADMIN_CAPABILITIES = {
     "account.view", "account.manage", "account.password_reset", "account.delete",
     "account.roles", "board.manage", "board.moderate", "session.manage",
-    "audit.read", "system.health",
+    "audit.read", "system.health", "federation.manage",
 }
 
 
@@ -3397,6 +3429,7 @@ def _admin_audit(token: str) -> None:
         try:
             auth_events = call("auth", "admin_audit")["events"]
             board_events = call("board", "admin_audit", token=token)["events"]
+            mail_events = call("mail", "admin_mail_audit", token=token)["events"]
         except RPCError as exc:
             show_error(exc)
             pause()
@@ -3410,6 +3443,10 @@ def _admin_audit(token: str) -> None:
             item = dict(event)
             item["service"] = "BOARD"
             item.setdefault("result", "success")
+            events.append(item)
+        for event in mail_events:
+            item = dict(event)
+            item["service"] = "MAIL"
             events.append(item)
         events.sort(key=lambda event: int(event["created_at"]), reverse=True)
         rows = _admin_matches(events[:400], query,
@@ -3469,6 +3506,158 @@ def _admin_health(token: str) -> None:
                  "\n".join(lines))
 
 
+def _show_link_invitation(invitation: object, title: str) -> None:
+    heading(title, "Administrator-only pairing material; transfer it through a secure channel")
+    print("\nThis code contains the shared link credential and is shown only now.\n")
+    print(safe_text(invitation))
+    print("\nThe other BBS imports this code, then returns a reciprocal invitation.")
+    pause()
+
+
+def _admin_peer_list(token: str) -> None:
+    cursor = 0
+    notice = ""
+    while True:
+        try:
+            peers = list(call("mail", "admin_peers", token=token)["peers"])
+        except RPCError as exc:
+            show_error(exc)
+            pause()
+            return
+        cursor = max(0, min(cursor, len(peers) - 1)) if peers else 0
+        heading("TRUSTED BBS LINKS", "Endpoints and credentials are visible only to administrators",
+                f"{len(peers)} LINKED")
+        print(styled(f"{'':2} {'BBS ID':20} {'STATE':8} {'QUEUE':5} NAME", BOLD))
+        start, end = page_window(peers, cursor)
+        for position in range(start, end):
+            peer = peers[position]
+            state = "ENABLED" if peer["enabled"] else "DISABLED"
+            queue = int(peer.get("queued", 0))
+            line = (f"{position + 1:2}. {clip(peer['bbs_id'], 20):20} {state:8} "
+                    f"{queue:5} {clip(peer['bbs_name'], max(8, width() - 43))}")
+            print(styled(line, REVERSE) if position == cursor else line)
+        if notice:
+            print(styled("\n" + notice, YELLOW))
+        if not peers:
+            print("\nNo BBS links are configured.")
+        print("\n[↑/↓] move  [Enter] details  [E] enable/disable  [R] reciprocal code")
+        print("[D] unlink  [X] return")
+        choice = key_input("Links> ")
+        if choice in ("x", "q"):
+            return
+        if choice in ("j", "k", "[", "]"):
+            cursor = _move_cursor(choice, cursor, peers)
+            continue
+        if not peers:
+            notice = "Import a peer invitation from the Federation menu first."
+            continue
+        selected = peers[cursor]
+        peer_id = str(selected["bbs_id"])
+        try:
+            if choice == "":
+                _text_viewer(
+                    "BBS LINK DETAILS", "Administrator-only routing information",
+                    f"Name: {selected['bbs_name']}\nNetwork ID: {peer_id}\n"
+                    f"State: {'enabled' if selected['enabled'] else 'disabled'}\n"
+                    f"Endpoint: {selected['endpoint']}\n"
+                    f"TLS SHA-256: {selected['certificate_sha256']}\n"
+                    f"Queued: {int(selected.get('queued', 0))}\n"
+                    f"Failed: {int(selected.get('failed', 0))}\n\n"
+                    "The shared credential is never returned by the service.")
+            elif choice == "e":
+                enabled = not bool(selected["enabled"])
+                call("mail", "admin_peer_enabled", {
+                    "bbs_id": peer_id, "enabled": enabled}, token)
+                notice = f"{peer_id} is now {'enabled' if enabled else 'disabled'}."
+            elif choice == "r":
+                result = call("mail", "admin_peer_invitation", {"bbs_id": peer_id}, token)
+                _show_link_invitation(result["invitation"], "RECIPROCAL LINK INVITATION")
+            elif choice == "d":
+                if input(f"Type UNLINK {peer_id} to remove this trust relationship: ").strip() \
+                        == f"UNLINK {peer_id}":
+                    call("mail", "admin_peer_delete", {"bbs_id": peer_id}, token)
+                    notice = f"Unlinked {peer_id}."
+                    cursor = max(0, cursor - 1)
+                else:
+                    notice = "Link unchanged."
+        except RPCError as exc:
+            notice = "Request rejected: " + safe_text(exc)
+
+
+def _admin_federation(token: str) -> None:
+    notice = ""
+    while True:
+        try:
+            site = call("mail", "admin_site", token=token)
+            peers = list(call("mail", "admin_peers", token=token)["peers"])
+        except RPCError as exc:
+            show_error(exc)
+            pause()
+            return
+        heading("BBS IDENTITY & MAIL EXCHANGE",
+                "Trusted, text-only private mail between linked BBS installations",
+                "READY" if site.get("ready") else "LOCAL ONLY")
+        print(f"\n  BBS name:        {safe_text(site['bbs_name'])}")
+        print(f"  Network ID:      {safe_text(site['bbs_id'])}")
+        print(f"  Public endpoint: "
+              f"{safe_text(site['public_endpoint']) if site['public_endpoint'] else '(not set)'}")
+        certificate = str(site.get("certificate_sha256", ""))
+        print(f"  TLS fingerprint: {certificate if certificate else 'unavailable'}")
+        print(f"  Trusted peers:   {len(peers)}")
+        print("\nOrdinary users see peer names and addresses only. Server addresses, TLS")
+        print("fingerprints, and shared credentials remain in this administrator console.")
+        if notice:
+            print(styled("\n" + notice, YELLOW))
+        print("\n[N] Name and identity   [C] Create first invitation")
+        print("[I] Import invitation   [P] Trusted peers   [X] Return")
+        choice = key_input("Federation> ")
+        if choice in ("x", "q"):
+            return
+        try:
+            if choice == "n":
+                name = input(f"BBS display name [{site['bbs_name']}]: ").strip() \
+                    or str(site["bbs_name"])
+                network_id = input(f"Stable network ID [{site['bbs_id']}]: ").strip() \
+                    or str(site["bbs_id"])
+                public_endpoint = input(
+                    f"Public HTTPS exchange origin [{site['public_endpoint'] or 'none'}] "
+                    "('-' clears): ").strip()
+                if public_endpoint == "-":
+                    public_endpoint = ""
+                elif not public_endpoint:
+                    public_endpoint = str(site["public_endpoint"])
+                result = call("mail", "admin_site_update", {
+                    "bbs_name": name, "bbs_id": network_id,
+                    "public_endpoint": public_endpoint}, token)
+                notice = (f"BBS identity saved as {result['bbs_name']} "
+                          f"({result['bbs_id']}).")
+            elif choice == "c":
+                result = call("mail", "admin_create_invitation", token=token)
+                _show_link_invitation(result["invitation"], "NEW BBS LINK INVITATION")
+            elif choice == "i":
+                invitation = input("Paste MHX1 invitation (blank cancels): ").strip()
+                if not invitation:
+                    continue
+                try:
+                    result = call("mail", "admin_import_invitation", {
+                        "invitation": invitation}, token)
+                except RPCError as exc:
+                    if "peer already exists" not in str(exc):
+                        raise
+                    if input("Peer exists. Type ROTATE to replace its credential: ").strip() \
+                            != "ROTATE":
+                        notice = "Existing peer was not changed."
+                        continue
+                    result = call("mail", "admin_import_invitation", {
+                        "invitation": invitation, "replace": True}, token)
+                notice = (f"Linked {result['bbs_name']} as @{result['bbs_id']}. "
+                          "Send its administrator a reciprocal invitation.")
+            elif choice == "p":
+                _admin_peer_list(token)
+        except RPCError as exc:
+            notice = "Request rejected: " + safe_text(exc)
+
+
 def administration(token: str, identity: dict[str, object]) -> None:
     """Capability-filtered historical administration console."""
     try:
@@ -3495,6 +3684,8 @@ def administration(token: str, identity: dict[str, object]) -> None:
             print("[L]og          Review administrative audit events")
         if _can(identity, "system.health"):
             print("[H]ealth       Check application authority availability")
+        if _can(identity, "federation.manage"):
+            print("[F]ederation   Name this BBS and manage trusted mail links")
         print("[R]oles        Explain historical and modern roles")
         print("[X] Exit        Return to the Lobby")
         choice = key_input("Admin> ")
@@ -3511,6 +3702,8 @@ def administration(token: str, identity: dict[str, object]) -> None:
             _admin_audit(token)
         elif choice == "h" and _can(identity, "system.health"):
             _admin_health(token)
+        elif choice == "f" and _can(identity, "federation.manage"):
+            _admin_federation(token)
         elif choice == "r":
             definitions = call("auth", "admin_roles")["roles"]
             content = []
@@ -4597,11 +4790,12 @@ def arcade(token: str, wopr_direct: bool = False) -> None:
                               "help-games.txt")
 
 
-def main_heading(identity: dict[str, object], active_users: int | None) -> None:
+def main_heading(identity: dict[str, object], active_users: int | None,
+                 site: dict[str, object]) -> None:
     """Draw the main-menu heading with presence at the upper right."""
     clear()
     columns = min(width(), 78)
-    title = "MARS HOTEL LOBBY"
+    title = safe_text(site.get("bbs_name", "The Mars Hotel")).upper() + " LOBBY"
     count = f"ACTIVE USERS: {active_users if active_users is not None else '?'}"
     if len(title) + len(count) + 1 <= columns:
         gap = " " * (columns - len(title) - len(count))
@@ -4617,10 +4811,10 @@ def main_heading(identity: dict[str, object], active_users: int | None) -> None:
     print(styled("=" * columns, DIM))
 
 
-def confirm_main_menu_exit() -> bool:
+def confirm_main_menu_exit(bbs_name: str) -> bool:
     """Require an affirmative response before Escape logs off from the Lobby."""
     try:
-        choice = key_input("\nAre you sure you want to leave Mars Hotel? [Y/N] -> ")
+        choice = key_input(f"\nAre you sure you want to leave {safe_text(bbs_name)}? [Y/N] -> ")
     except EOFError:
         return True
     except KeyboardInterrupt:
@@ -4643,6 +4837,7 @@ def main() -> None:
     session = json.loads(payload.decode("utf-8"))
     token = str(session["token"])
     identity = dict(session["identity"])
+    site: dict[str, object] = {"bbs_name": "The Mars Hotel", "bbs_id": "mars-hotel"}
     pager: Pager | None = None
     try:
         if identity.get("password_change_required") and not required_password_change(identity):
@@ -4660,7 +4855,11 @@ def main() -> None:
             except RPCError:
                 break
             unread_mail, unread_posts, active_users = dashboard(token)
-            main_heading(identity, active_users)
+            try:
+                site = call("mail", "site_identity", token=token)
+            except (OSError, RPCError):
+                pass
+            main_heading(identity, active_users, site)
             if width() < 60:
                 print(styled("COMMUNITY", BOLD, YELLOW))
                 print(f" [B] Boards ({unread_posts} new)")
@@ -4704,7 +4903,7 @@ def main() -> None:
                 print("  [H]elp         Command guide")
                 print("  [X] Exit        Log off")
             try:
-                choice = key_input("\n[Mars Hotel Main Menu] -> ",
+                choice = key_input(f"\n[{safe_text(site.get('bbs_name', 'BBS'))} Main Menu] -> ",
                                    escape_command="escape")
             except EOFError:
                 break
@@ -4713,7 +4912,7 @@ def main() -> None:
                 # escape tears down the authenticated UI and closes SSH.
                 continue
             if choice == "escape":
-                if confirm_main_menu_exit():
+                if confirm_main_menu_exit(str(site.get("bbs_name", "the BBS"))):
                     break
                 continue
             if choice == "x":
@@ -4776,7 +4975,7 @@ def main() -> None:
             call("session", "end", token=token)
         except Exception:
             pass
-    print("\nGoodbye from Mars Hotel Revival.")
+    print("\nGoodbye from " + safe_text(site.get("bbs_name", "The Mars Hotel")) + ".")
 
 
 if __name__ == "__main__":

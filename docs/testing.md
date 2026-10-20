@@ -12,16 +12,17 @@ docker run --rm --network none --read-only --tmpfs /tmp:rw,nosuid,nodev,size=64m
   mars-hotel-bbs-test python3 tests/run-models.py
 ```
 
-Validated on 2026-10-18:
+Validated on 2026-10-20:
 
-- all 37 Python modules compiled and imported; 10 recovery unit tests passed
-- 13 recovered model programs passed, including 5,000 bounded game commands and nine door model tests
+- all Python modules compiled and imported; 16 unit tests passed
+- 14 recovered model programs passed, including 5,000 bounded game commands and nine door model tests
 - Argon2id authentication, ticket replay rejection, UID-bound sessions and administrator boundaries passed
 - board CRUD, private mail isolation/migration, chat, file, all five native games and exact Stockfish 19 execution passed
 - SSH guest rejection, account login, arcade/talk navigation, logout and remote-command denial passed
 - real service RPC integration passed for auth, sessions, boards, mail, files, chat, games, information and internal TLS IRC
 - external IRC parsing, local capability authentication, quiet-user presence, relay, sanitization, TLS, reconnect and NickServ refresh passed against local fixtures
 - deterministic information parsing, cache controls, SSRF allowlist and terminal-control removal passed
+- linked-BBS mail passed real pinned-TLS delivery, HMAC authentication, replay and duplicate rejection, sender and peer rate limits, queue status, hidden route metadata and bad-certificate rejection
 - isolated live collectors returned data from CISA, CelesTrak, EFF, Global Voices, NASA, NOAA, TVmaze, USGS and Wikipedia; market data correctly reported unavailable without its optional key
 - Compose configuration, non-root identities, read-only filesystems, dropped capabilities and published-port policy were inspected
 - a staged-tree Gitleaks scan found no secrets; repeat the scan on every release commit

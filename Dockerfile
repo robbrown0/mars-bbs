@@ -45,7 +45,7 @@ ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 
 FROM service AS test
 USER root
-RUN apt-get update && apt-get install -y --no-install-recommends openssh-client && rm -rf /var/lib/apt/lists/* && /opt/venv/bin/pip install --no-cache-dir pexpect==4.9.0 ptyprocess==0.7.0
+RUN apt-get update && apt-get install -y --no-install-recommends openssh-client openssl && rm -rf /var/lib/apt/lists/* && /opt/venv/bin/pip install --no-cache-dir pexpect==4.9.0 ptyprocess==0.7.0
 COPY tests/ /opt/mars-v2/tests/
 RUN find /opt/mars-v2/tests -type d -exec chmod 0555 {} + && find /opt/mars-v2/tests -type f -exec chmod 0444 {} +
 CMD ["python3","-m","unittest","discover","-s","tests","-v"]
