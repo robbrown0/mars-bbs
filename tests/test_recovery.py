@@ -13,6 +13,38 @@ def req(op, **data):
 
 
 class RecoveryTests(unittest.TestCase):
+    def test_required_password_change_uses_authenticated_uid(self):
+        with tempfile.TemporaryDirectory() as directory:
+            authority = authd.Authority(directory + "/auth.db")
+            authority.add_account("tester", "Temporary test password!", "Test Member",
+                                  password_change_required=True)
+            uid = authority.db.execute(
+                "SELECT runtime_uid FROM accounts WHERE userid='tester'").fetchone()[0]
+            request = req("change_password", new_password="Replacement test password!")
+            with self.assertRaises(rpc.RPCError):
+                authority.handle(request, (123, 29999, 29999))
+            self.assertTrue(authority.handle(request, (123, uid, uid))["changed"])
+            row = authority.db.execute(
+                "SELECT password_hash,password_change_required FROM accounts "
+                "WHERE userid='tester'").fetchone()
+            self.assertFalse(row["password_change_required"])
+            self.assertTrue(sodium.verify_password(row["password_hash"],
+                                                  "Replacement test password!"))
+            with self.assertRaises(rpc.RPCError):
+                authority.handle(request, (123, uid, uid))
+            authority.db.close()
+
+    def test_required_password_change_prompts_only_for_new_password(self):
+        from marsv2 import ui
+        identity = {"userid": "tester", "password_change_required": True}
+        with patch.object(ui, "heading"), patch.object(ui, "call") as call, \
+                patch.object(ui.getpass, "getpass", side_effect=[
+                    "Replacement test password!", "Replacement test password!"]) as prompt:
+            self.assertTrue(ui.required_password_change(identity))
+        self.assertEqual(prompt.call_count, 2)
+        self.assertNotIn("old_password", call.call_args.args[2])
+        self.assertFalse(identity["password_change_required"])
+
     def test_syntax_and_imports(self):
         paths = sorted(Path("marsv2").glob("*.py"))
         self.assertGreaterEqual(len(paths), 37)

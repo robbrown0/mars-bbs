@@ -434,13 +434,18 @@ class Authority:
                         "profile_text": profile_text, "timezone": timezone,
                         "signature": signature}
             if op == "change_password":
-                old = password(data.get("old_password"))
                 new = password(data.get("new_password"))
                 row = self.db.execute(
                     "SELECT * FROM accounts WHERE runtime_uid=? AND login_enabled=1",
                     (peer[1],)).fetchone()
-                if row is None or not verify_password(row["password_hash"], old):
+                if row is None:
                     raise RPCError("authentication failed")
+                # The gateway authenticated this account before starting its
+                # UID-bound frontend. Required resets need no second prompt.
+                if not row["password_change_required"]:
+                    old = password(data.get("old_password"))
+                    if not verify_password(row["password_hash"], old):
+                        raise RPCError("authentication failed")
                 with self.db:
                     self.db.execute(
                         "UPDATE accounts SET password_hash=?,password_change_required=0 "

@@ -2787,7 +2787,6 @@ def required_password_change(identity: dict[str, object]) -> bool:
         heading("PASSWORD CHANGE REQUIRED",
                 "An administrator issued a temporary password; choose your own before entry")
         try:
-            old = getpass.getpass("Temporary password: ")
             new = getpass.getpass("New password (12-64 characters): ")
             again = getpass.getpass("Retype new password: ")
         except (EOFError, KeyboardInterrupt):
@@ -2797,7 +2796,7 @@ def required_password_change(identity: dict[str, object]) -> bool:
             continue
         try:
             call("auth", "change_password", {"userid": identity["userid"],
-                                               "old_password": old, "new_password": new})
+                                               "new_password": new})
             identity["password_change_required"] = False
             print("Password changed. Continuing to the Mars Hotel Lobby.")
             return True
