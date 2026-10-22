@@ -232,6 +232,29 @@ class RecoveryTests(unittest.TestCase):
         self.assertIn("[A]", rendered)
         self.assertIn("available playlists", rendered)
 
+    def test_marsamp_loads_the_complete_hundred_song_playlist(self):
+        from marsv2 import ui
+
+        def music_call(service, operation, data=None, token=None):
+            self.assertEqual(service, "music")
+            if operation == "playlist_tracks":
+                self.assertEqual(data, {
+                    "slug": "eighties-essentials", "offset": 0, "limit": 100,
+                })
+                return {"playlist": {"name": "1980s Essentials"}, "tracks": []}
+            if operation == "status":
+                return {"action": "stop"}
+            if operation == "stats":
+                return {"tracks": 26075}
+            raise AssertionError(operation)
+
+        with patch.dict(ui._marsamp_view,
+                        {"playlist": "eighties-essentials"}, clear=True), \
+                patch.object(ui, "call", side_effect=music_call), \
+                patch.object(ui, "key_input", side_effect=["x"]), \
+                patch.object(ui, "heading"), patch("builtins.print"):
+            ui.marsamp("session-token")
+
     def test_board_authentication_and_write_read(self):
         identity = {"account_id": 1, "userid": "tester", "roles": ["Basic-1"], "capabilities": []}
         with tempfile.TemporaryDirectory() as directory:

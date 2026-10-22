@@ -174,8 +174,15 @@ class MusicTests(unittest.TestCase):
         filename = Path(__file__).resolve().parents[1] / "assets" / "music-playlists.json"
         playlists = Music._load_playlists(str(filename))
         self.assertEqual(len(playlists), 10)
-        self.assertTrue(all(len(playlist["tracks"]) == 12 for playlist in playlists))
+        sizes = {playlist["slug"]: len(playlist["tracks"]) for playlist in playlists}
+        self.assertEqual(sizes["eighties-essentials"], 100)
+        self.assertTrue(all(size == 35 for slug, size in sizes.items()
+                            if slug != "eighties-essentials"))
         self.assertEqual(len({playlist["slug"] for playlist in playlists}), 10)
+        eighties = next(playlist for playlist in playlists
+                         if playlist["slug"] == "eighties-essentials")
+        self.assertEqual(len({track["title"].casefold()
+                              for track in eighties["tracks"]}), 100)
 
     def test_advance_rpc_uses_shuffle_queue(self) -> None:
         with patch("marsv2.musicd.validate", return_value=IDENTITY), \
