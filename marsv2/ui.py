@@ -5031,7 +5031,7 @@ def marsamp(token: str) -> None:
         try:
             if playlist_slug:
                 result = call("music", "playlist_tracks", {
-                    "slug": playlist_slug, "offset": 0, "limit": 40,
+                    "slug": playlist_slug, "offset": 0, "limit": 100,
                 }, token)
                 playlist = result.get("playlist")
                 if isinstance(playlist, dict):
