@@ -1,1 +1,128 @@
-cat: docs/deployed-images.json: No such file or directory
+[
+  {
+    "service": "gateway",
+    "container": "mars-v2ssh-gateway",
+    "image": "sha256:fb357743136884b10adcef307eebb60cd1b05e5e8477cc49d91a5bae33a35eb2",
+    "tag": "mars-hotel-v2-gateway:marsamp-durable-sessions-20261022",
+    "user": "root",
+    "running": true,
+    "read_only": true
+  },
+  {
+    "service": "auth",
+    "container": "mars-v2final-auth",
+    "image": "sha256:6110a8b2dd8d71eab71dbd392c8209757858ba68b05ffadd6493469c072b16e7",
+    "tag": "mars-hotel-v2-service:marsamp-20261021-r2",
+    "user": "21001:21001",
+    "running": true,
+    "read_only": true
+  },
+  {
+    "service": "session",
+    "container": "mars-v2final-session",
+    "image": "sha256:ad9f5fb3cc642b624843e63cccce33ebea6be4a322bfa38ae6beff80c424a218",
+    "tag": "mars-hotel-v2-service:marsamp-durable-sessions-20261022",
+    "user": "21002:21002",
+    "running": true,
+    "read_only": true
+  },
+  {
+    "service": "mail",
+    "container": "mars-v2final-mail",
+    "image": "sha256:29254770764d7e6425ea640515abac0d62556efeb81df43d4b22e7db2e66a17e",
+    "tag": "mars-hotel-v2-service:federation-mail-20261020",
+    "user": "21003:21003",
+    "running": true,
+    "read_only": true
+  },
+  {
+    "service": "mail-exchange",
+    "container": "mars-v2-mail-exchange",
+    "image": "sha256:a81096e83e6652656abb39eafc8b0e26380ed11a80cef0402ff915d936210216",
+    "tag": "mars-hotel-v2-service:federation-exchange-20261020",
+    "user": "21003:21003",
+    "running": true,
+    "read_only": true
+  },
+  {
+    "service": "board",
+    "container": "mars-v2final-board",
+    "image": "sha256:457a4c1db6e89f8c9ea7df8f103b6fa99351694fbfdeeeff0b709e1c5ba42c46",
+    "tag": "mars-hotel-v2-service:board-picker-20261017",
+    "user": "21004:21004",
+    "running": true,
+    "read_only": true
+  },
+  {
+    "service": "chat",
+    "container": "mars-v2final-chat",
+    "image": "sha256:9682aca87a83fbdf7587ce9253bcc273557ef8dc257ea0433f9e3b153adf25a6",
+    "tag": "mars-hotel-v2-service:eagles-compat-20261016",
+    "user": "21006:21006",
+    "running": true,
+    "read_only": true
+  },
+  {
+    "service": "file",
+    "container": "mars-v2final-file",
+    "image": "sha256:3392cb808b964f1a3ab786286fd6d5d1671586a682c5e8f409b97152421dbaa5",
+    "tag": "mars-hotel-v2-service:ssh-download-20261017",
+    "user": "21005:21005",
+    "running": true,
+    "read_only": true
+  },
+  {
+    "service": "music",
+    "container": "mars-v2final-music",
+    "image": "sha256:ad9f5fb3cc642b624843e63cccce33ebea6be4a322bfa38ae6beff80c424a218",
+    "tag": "mars-hotel-v2-service:marsamp-durable-sessions-20261022",
+    "user": "21012:21012",
+    "running": true,
+    "read_only": true
+  },
+  {
+    "service": "game",
+    "container": "mars-v2final-game",
+    "image": "sha256:993ca7802f06ff608ee98dc4520370bfd81db1b1988ed3f32aadffaf90190db1",
+    "tag": "mars-hotel-v2-game:chess-20261016",
+    "user": "21010:21010",
+    "running": true,
+    "read_only": true
+  },
+  {
+    "service": "door",
+    "container": "mars-v2final-door",
+    "image": "sha256:e39f6612c33f535f246ea549a88bdb1a07631b66a1f4d8dd90aa120f12be2b51",
+    "tag": "mars-hotel-v2-door:dos80-20261017",
+    "user": "21011:21011",
+    "running": true,
+    "read_only": true
+  },
+  {
+    "service": "information",
+    "container": "mars-v2-information-recovery",
+    "image": "sha256:59e83087945600ee33a21cf3284d278c1a5ec6b4d803b76835ab09b7013c9126",
+    "tag": "mars-hotel-v2-information:hf-outlook-20261016",
+    "user": "21009:21009",
+    "running": true,
+    "read_only": true
+  },
+  {
+    "service": "ircbridge",
+    "container": "mars-v2-ircbridge-recovery",
+    "image": "sha256:b4946b619f2482120f2ad98ff850aa1b65921fcb78f5e9d2fa660036ab0d16e2",
+    "tag": "mars-hotel-v2-service:release-20261016",
+    "user": "21007:21007",
+    "running": true,
+    "read_only": true
+  },
+  {
+    "service": "irc",
+    "container": "mars-v2-irc-recovery",
+    "image": "sha256:7b2cd0a6e792542b8016ba7df4216c294ec1ccd6c6f6ea1878c3c013ed95686b",
+    "tag": "mars-hotel-v2-irc:release-20261016",
+    "user": "10002:10002",
+    "running": true,
+    "read_only": true
+  }
+]
