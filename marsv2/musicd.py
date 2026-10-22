@@ -1050,7 +1050,8 @@ def main() -> None:
     parser.add_argument("--session-socket", required=True)
     parser.add_argument("--source", action="append", type=parse_source, default=[])
     parser.add_argument("--extra-root")
-    parser.add_argument("--playlists-file")
+    parser.add_argument("--playlists-file",
+                        default="/opt/mars-v2/assets/music-playlists.json")
     parser.add_argument("--public-url", required=True)
     parser.add_argument("--http-host", default="0.0.0.0")
     parser.add_argument("--http-port", type=int, default=8080)
