@@ -4902,6 +4902,34 @@ def arcade(token: str, wopr_direct: bool = False) -> None:
                               "help-games.txt")
 
 
+def _marsamp_pairing_screen(pairing_url: object, selected: object = "") -> None:
+    """Present the one-click browser handoff with a plain URL fallback."""
+    heading("MARSAMP AUDIO PAIRING",
+            "Open once in a PC or phone browser; ticket expires quickly")
+    if selected:
+        print("\nSelected: " + clip(safe_text(selected), width()))
+    url = safe_text(pairing_url)
+    print("\n" + terminal_hyperlink("OPEN MARSAMP IN BROWSER", url))
+    print(url + "\n")
+    print("Tap or click the OPEN link. If your terminal does not support links,")
+    print("open the plain address shown above.")
+    print("The browser receives an opaque session cookie. Your BBS password,")
+    print("NAS locations, filenames, and internal service addresses are not sent.")
+    pause()
+
+
+def _marsamp_play(token: str, track: dict[str, object]) -> str:
+    """Select a track and offer browser handoff when no sink is active."""
+    state = call("music", "play", {"id": int(track["id"])}, token)
+    pair_url = state.get("pair_url")
+    if pair_url:
+        artist = safe_text(track.get("artist", ""))
+        title = safe_text(track.get("title", "Untitled"))
+        _marsamp_pairing_screen(pair_url, (artist + " - " if artist else "") + title)
+        return "Song selected. Complete browser pairing to hear it."
+    return "Play command sent to the paired audio sink."
+
+
 def marsamp(token: str) -> None:
     """Control the authenticated browser audio sink from an ANSI player."""
     query = ""
@@ -4969,14 +4997,13 @@ def marsamp(token: str) -> None:
             elif choice == "k":
                 cursor = max(0, cursor - 1)
             elif choice in ("", "x") and tracks:
-                state = call("music", "play", {"id": int(tracks[cursor]["id"])}, token)
-                notice = "Play command sent to the paired audio sink."
+                notice = _marsamp_play(token, tracks[cursor])
             elif choice == "z" and tracks:
                 cursor = (cursor - 1) % len(tracks)
-                call("music", "play", {"id": int(tracks[cursor]["id"])}, token)
+                notice = _marsamp_play(token, tracks[cursor])
             elif choice == "b" and tracks:
                 cursor = (cursor + 1) % len(tracks)
-                call("music", "play", {"id": int(tracks[cursor]["id"])}, token)
+                notice = _marsamp_play(token, tracks[cursor])
             elif choice == "c":
                 call("music", "pause", token=token)
             elif choice == "v":
@@ -4986,16 +5013,7 @@ def marsamp(token: str) -> None:
                 cursor = 0
             elif choice == "p":
                 pairing = call("music", "pair", token=token)
-                heading("MARSAMP AUDIO PAIRING",
-                        "Open once in a PC or phone browser; ticket expires quickly")
-                pairing_url = safe_text(pairing["url"])
-                print("\n" + terminal_hyperlink("OPEN MARSAMP IN BROWSER", pairing_url))
-                print(pairing_url + "\n")
-                print("Tap or click the OPEN link. If your terminal does not support links,")
-                print("open the plain address shown above.")
-                print("The browser receives an opaque session cookie. Your BBS password,")
-                print("NAS locations, filenames, and internal service addresses are not sent.")
-                pause()
+                _marsamp_pairing_screen(pairing["url"])
         except (OSError, RPCError, ValueError) as exc:
             notice = "Request rejected: " + safe_text(exc)
 

@@ -372,8 +372,20 @@ class Music:
             browser_hash = hashlib.sha256(browser.encode("ascii")).hexdigest()
             ticket = dict(ticket)
             ticket["expires"] = time.monotonic() + BROWSER_SECONDS
+            ticket["last_seen"] = 0.0
             self.browser_sessions[browser_hash] = ticket
             return browser
+
+    def browser_active(self, account_id: int) -> bool:
+        """Return whether a browser for this account has polled recently."""
+        now = time.monotonic()
+        with self.lock:
+            self._prune_tokens()
+            return any(
+                int(browser["account_id"]) == account_id
+                and now - float(browser.get("last_seen", 0.0)) <= 5.0
+                for browser in self.browser_sessions.values()
+            )
 
     def browser_identity(self, raw: str) -> dict[str, object]:
         if not TOKEN_RE.fullmatch(raw):
@@ -395,6 +407,7 @@ class Music:
             raise RPCError("browser authentication required")
         with self.lock:
             browser["expires"] = time.monotonic() + BROWSER_SECONDS
+            browser["last_seen"] = time.monotonic()
         return ident
 
     def state(self, account_id: int) -> dict[str, object]:
@@ -473,7 +486,12 @@ class Music:
                 track_id = integer(data.get("id"), "track id")
             elif data:
                 raise RPCError("invalid playback request")
-            return self.command(int(ident["account_id"]), op, track_id)
+            account_id = int(ident["account_id"])
+            result = self.command(account_id, op, track_id)
+            if op == "play" and not self.browser_active(account_id):
+                result["pair_url"] = self._new_pair(
+                    ident, str(req["token"]))["url"]
+            return result
         if op == "rescan":
             self._require(ident, MANAGE_CAPABILITY)
             if data:
@@ -502,7 +520,7 @@ small{{display:block;color:#a6afc8;margin-top:12px;line-height:1.4}}
 </style></head><body><main><h1>MARSAMP // AUDIO SINK</h1>
 <div id="track">Paired with The Mars Hotel. Tap Enable Audio once.</div>
 <div class="meter" id="meter"></div><audio id="audio" preload="metadata"></audio>
-<div><button id="enable">Enable Audio</button><button id="pause">Pause</button>
+<div><button id="enable">Play Selected Song</button><button id="pause">Pause</button>
 <button id="stop">Stop</button></div>
 <small>Keep this page open while controlling MarsAmp through SSH. No NAS path or BBS
 credential is stored in this page.</small></main><script>
@@ -517,7 +535,7 @@ if(r.status===401){{document.getElementById('track').textContent='BBS session en
 let s=await r.json(); if(s.track)document.getElementById('track').textContent=
 (s.track.artist?s.track.artist+' - ':'')+s.track.title;
 if(s.serial!==serial){{serial=s.serial;if(s.action==='play'&&s.stream){{
-audio.src=s.stream;if(enabled)audio.play();}}else if(s.action==='pause')audio.pause();
+audio.src=s.stream;if(enabled)audio.play();else audio.play().then(()=>enabled=true).catch(()=>{{}});}}else if(s.action==='pause')audio.pause();
 else if(s.action==='stop'){{audio.pause();audio.removeAttribute('src');audio.load();}}}}
 bars(!audio.paused);setTimeout(poll,750)}}catch(e){{setTimeout(poll,2000)}}}} poll();
 </script></body></html>"""
