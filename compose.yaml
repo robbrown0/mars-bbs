@@ -29,6 +29,7 @@
         "board_sock:/run/mars-v2/board:ro",
         "chat_sock:/run/mars-v2/chat:ro",
         "file_sock:/run/mars-v2/file:ro",
+        "music_sock:/run/mars-v2/music:ro",
         "information_sock:/run/mars-v2/information:ro",
         "mail_sock:/run/mars-v2/mail:ro"
       ],
@@ -628,6 +629,106 @@
         }
       }
     },
+    "music": {
+      "profiles": [
+        "music"
+      ],
+      "build": {
+        "context": ".",
+        "target": "service"
+      },
+      "image": "mars-hotel-recovered-music:local",
+      "read_only": true,
+      "cap_drop": [
+        "ALL"
+      ],
+      "security_opt": [
+        "no-new-privileges:true"
+      ],
+      "user": "21012:21012",
+      "tmpfs": [
+        "/tmp:rw,nosuid,nodev,noexec,size=64m"
+      ],
+      "volumes": [
+        "music_sock:/run/mars-v2/music",
+        "session_sock:/run/mars-v2/session:ro",
+        "music_data:/var/lib/mars-v2/music",
+        {
+          "type": "bind",
+          "source": "${MARSAMP_NAS01_PATH:-./music/nas01}",
+          "target": "/music/nas01",
+          "read_only": true
+        },
+        {
+          "type": "bind",
+          "source": "${MARSAMP_UNR01_PATH:-./music/unr01}",
+          "target": "/music/unr01",
+          "read_only": true
+        },
+        {
+          "type": "bind",
+          "source": "${MARSAMP_EXTRA_ROOT:-./music/extra}",
+          "target": "/music/extra",
+          "read_only": true
+        }
+      ],
+      "restart": "unless-stopped",
+      "command": [
+        "python3",
+        "-m",
+        "marsv2.musicd",
+        "--db",
+        "/var/lib/mars-v2/music/music.db",
+        "--socket",
+        "/run/mars-v2/music/music.sock",
+        "--session-socket",
+        "/run/mars-v2/session/session.sock",
+        "--source",
+        "nas01=/music/nas01",
+        "--source",
+        "unr01=/music/unr01",
+        "--extra-root",
+        "/music/extra",
+        "--public-url",
+        "${MARSAMP_PUBLIC_URL:-https://mars.ee.msstate.edu.pl/marsamp}",
+        "--scan-on-start"
+      ],
+      "ports": [
+        "127.0.0.1:${MARSAMP_PORT:-2444}:8080"
+      ],
+      "networks": [
+        "music"
+      ],
+      "environment": {
+        "MARS_V2_HEALTH_SERVICE": "music"
+      },
+      "healthcheck": {
+        "test": [
+          "CMD",
+          "python3",
+          "-m",
+          "marsv2.health"
+        ],
+        "interval": "10s",
+        "timeout": "3s",
+        "retries": 12,
+        "start_period": "10s"
+      },
+      "pids_limit": 96,
+      "mem_limit": "384m",
+      "ulimits": {
+        "core": 0,
+        "nofile": {
+          "soft": 1024,
+          "hard": 1024
+        }
+      },
+      "depends_on": {
+        "session": {
+          "condition": "service_healthy"
+        }
+      }
+    },
     "information": {
       "build": {
         "context": ".",
@@ -945,6 +1046,7 @@
     "chat_sock": {},
     "file_sock": {},
     "information_sock": {},
+    "music_sock": {},
     "mail_sock": {},
     "mail_data": {},
     "game_data": {},
@@ -952,6 +1054,7 @@
     "board_data": {},
     "file_data": {},
     "information_data": {},
+    "music_data": {},
     "door_data": {}
   },
   "networks": {
@@ -961,6 +1064,9 @@
       }
     },
     "information": {},
+    "music": {
+      "internal": false
+    },
     "irc": {
       "internal": true
     },

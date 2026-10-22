@@ -56,7 +56,7 @@ def main() -> None:
         assert all("password_hash" not in row and "runtime_uid" not in row for row in listing)
         definitions = auth.handle(packet("admin_roles"), admin_peer)["roles"]
         assert [row["name"] for row in definitions] == [
-            "Basic-1", "AccountMgr", "BoardMgr", "Sysop"]
+            "Basic-1", "AccountMgr", "BoardMgr", "Music", "Sysop"]
         assert all(row["description"] for row in definitions)
         denied(lambda: auth.handle(packet("admin_set_roles", {
             "userid": "alice", "roles": ["BoardMgr"], "password": "wrong-password!"

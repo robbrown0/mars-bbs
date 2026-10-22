@@ -9,6 +9,7 @@ private
 data
 backups
 licensed-doors
+music
 *.db
 *.db-*
 *.sqlite*

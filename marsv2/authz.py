@@ -15,11 +15,13 @@ ROLE_CAPABILITIES: dict[str, frozenset[str]] = {
         "account.delete",
     }),
     "BoardMgr": frozenset({"board.manage", "board.moderate"}),
+    "Music": frozenset({"music.play"}),
     "Sysop": frozenset({
         "account.view", "account.manage", "account.password_reset",
         "account.delete", "account.roles",
         "board.manage", "board.moderate", "session.manage",
         "audit.read", "system.health", "federation.manage",
+        "music.play", "music.manage",
     }),
 }
 
@@ -33,15 +35,18 @@ ROLE_DESCRIPTIONS: dict[str, str] = {
     "BoardMgr": (
         "Create, rename, lock, archive, restore, and moderate message boards."
     ),
+    "Music": (
+        "Use the authenticated MarsAmp catalog and audio player."
+    ),
     "Sysop": (
         "Full BBS administrator: accounts and roles, boards, sessions, audit log, "
-        "application health, BBS identity, and trusted mail links."
+        "application health, BBS identity, trusted mail links, and MarsAmp."
     ),
 }
 ADMIN_CONSOLE_CAPABILITIES = frozenset({
     "account.view", "account.manage", "account.password_reset", "account.delete",
     "account.roles", "board.manage", "board.moderate", "session.manage",
-    "audit.read", "system.health", "federation.manage",
+    "audit.read", "system.health", "federation.manage", "music.manage",
 })
 
 

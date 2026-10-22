@@ -10,6 +10,12 @@ data/
 backups/
 recovery/
 licensed-doors/
+music/nas01/*
+!music/nas01/.gitkeep
+music/unr01/*
+!music/unr01/.gitkeep
+music/extra/*
+!music/extra/.gitkeep
 *.db
 *.db-*
 *.sqlite*

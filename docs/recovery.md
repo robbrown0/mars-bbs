@@ -2,7 +2,7 @@
 
 Recovery began 2026-10-18 on `unr01`. Existing material was never overwritten. A new private archive of prior recovery, reconstructed source and configuration has SHA-256 `e93f62443d32faf307d6c72005868bd5cdf8b82bcefe9c94f3c2d9d46ec2561e`. It is preservation evidence, not a transactionally consistent live-database backup. Raw Docker inventories, inspect records, histories and 12 running-container source captures remain private outside Git.
 
-The canonical package contains 37 Python modules. The selected set matches the later `github-rc-20261017` test image byte-for-byte before the documented portability adaptations. `doord.py` came from the executing door service. Earlier recovered board, chat, door, file, game, mail, session and gateway modules matched their corresponding live copies. Historical variants were catalogued but not merged speculatively. Original hashes appear in `source-provenance.json`; exact deployed image IDs appear in `deployed-images.json`.
+The recovered baseline contains 37 Python modules. The selected set matches the later `github-rc-20261017` test image byte-for-byte before the documented portability adaptations. `doord.py` came from the executing door service. Earlier recovered board, chat, door, file, game, mail, session and gateway modules matched their corresponding live copies. Historical variants were catalogued but not merged speculatively. Original hashes appear in `source-provenance.json`; exact deployed image IDs appear in `deployed-images.json`.
 
 ## Recovered and validated
 
@@ -32,3 +32,7 @@ The exact dosemu2 build installed on October 16 was superseded in the rolling PP
 ## Recovery decisions
 
 Fresh deployment files contain no Unraid paths, external production volumes or fixed production container names. Only SSH is published. All tests used isolated resources. Production application containers were inspected and copied from without stop, restart, replacement or configuration change. No private database, account, message or runtime credential is part of the public tree. The included LORD registration is deliberately public by operator attestation and is documented separately from runtime secrets.
+
+## Post-recovery MarsAmp addition
+
+`musicd.py` is new work built after recovery; it is not represented as source recovered from the October images. A read-only inventory on 2026-10-21 found 25,786 supported files in the primary NAS01 music library and 289 in the secondary UNR01 library. The repository includes neither collection. The optional service catalogs both read-only sources, supplies an authenticated SSH control screen and streams original files to a paired phone or PC browser. The Mac intake share was excluded by operator direction. Production containers were not changed while this feature was developed and tested.
