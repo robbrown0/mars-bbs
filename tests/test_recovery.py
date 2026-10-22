@@ -8,7 +8,7 @@ import tempfile
 import time
 import unittest
 from unittest.mock import patch
-from marsv2 import rpc, authd, boardd, maild, games, migrate, sodium, informationd
+from marsv2 import rpc, authd, boardd, maild, games, migrate, sodium, informationd, ui
 
 
 def req(op, **data):
@@ -125,6 +125,34 @@ class RecoveryTests(unittest.TestCase):
                       rendered)
         self.assertIn("OPEN MARSAMP", rendered)
         self.assertEqual(rendered.count("\033"), 4)
+
+    def test_marsamp_restores_view_within_login_session(self):
+        tracks = [
+            {"id": 1, "artist": "First", "title": "Song One"},
+            {"id": 2, "artist": "Second", "title": "Song Two"},
+        ]
+
+        def music_call(service, operation, data=None, token=None):
+            self.assertEqual(service, "music")
+            if operation == "search":
+                self.assertEqual(data["query"], "Remembered search")
+                return {"tracks": tracks}
+            if operation == "status":
+                return {"action": "play", "track": tracks[1]}
+            if operation == "stats":
+                return {"tracks": 2}
+            raise AssertionError(operation)
+
+        with patch.dict(ui._marsamp_view,
+                        {"query": "Remembered search", "cursor": 1,
+                         "mode": "shuffle", "track_id": 2}, clear=True), \
+                patch.object(ui, "call", side_effect=music_call), \
+                patch.object(ui, "_marsamp_play", return_value="playing") as play, \
+                patch.object(ui, "key_input", side_effect=["x", "q"]), \
+                patch.object(ui, "heading"), patch("builtins.print"):
+            ui.marsamp("session-token")
+
+        play.assert_called_once_with("session-token", tracks[1], tracks, "shuffle")
 
     def test_board_authentication_and_write_read(self):
         identity = {"account_id": 1, "userid": "tester", "roles": ["Basic-1"], "capabilities": []}

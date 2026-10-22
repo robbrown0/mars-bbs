@@ -70,6 +70,9 @@ BOARD_BODY_MAX = 16384
 # Leave useful room for new reply/forward text instead of filling the editor
 # with imported history. The mail service remains the final size authority.
 MAIL_HISTORY_MAX = 6000
+_marsamp_view: dict[str, object] = {
+    "query": "", "cursor": 0, "mode": "sequential", "track_id": 0,
+}
 
 
 _builtin_input: Callable[[str], str] = input
@@ -4909,18 +4912,35 @@ def _marsamp_pairing_screen(pairing_url: object, selected: object = "") -> None:
     if selected:
         print("\nSelected: " + clip(safe_text(selected), width()))
     url = safe_text(pairing_url)
-    print("\n" + terminal_hyperlink("OPEN MARSAMP IN BROWSER", url))
+    inner_width = max(18, min(54, width() - 2))
+    label = clip(">>> TAP: OPEN MARSAMP IN BROWSER <<<", inner_width)
+    border = "+" + "-" * inner_width + "+"
+    print("\n" + styled(border, BOLD, CYAN))
+    print(styled("|", BOLD, CYAN) +
+          styled(terminal_hyperlink(label.center(inner_width), url),
+                 BOLD, REVERSE, GREEN) +
+          styled("|", BOLD, CYAN))
+    print(styled(border, BOLD, CYAN))
+    print("\nPlain address for terminals that cannot open the button:")
     print(url + "\n")
-    print("Tap or click the OPEN link. If your terminal does not support links,")
-    print("open the plain address shown above.")
+    for line in textwrap.wrap(
+            "Tap the highlighted button above. On iPhone or iPad, then tap "
+            "PLAY SELECTED SONG once when the browser opens.",
+            width=max(20, width())):
+        print(line)
     print("The browser receives an opaque session cookie. Your BBS password,")
     print("NAS locations, filenames, and internal service addresses are not sent.")
     pause()
 
 
-def _marsamp_play(token: str, track: dict[str, object]) -> str:
+def _marsamp_play(token: str, track: dict[str, object],
+                  tracks: list[dict[str, object]], mode: str) -> str:
     """Select a track and offer browser handoff when no sink is active."""
-    state = call("music", "play", {"id": int(track["id"])}, token)
+    state = call("music", "play", {
+        "id": int(track["id"]),
+        "queue": [int(row["id"]) for row in tracks],
+        "mode": mode,
+    }, token)
     pair_url = state.get("pair_url")
     if pair_url:
         artist = safe_text(track.get("artist", ""))
@@ -4932,8 +4952,16 @@ def _marsamp_play(token: str, track: dict[str, object]) -> str:
 
 def marsamp(token: str) -> None:
     """Control the authenticated browser audio sink from an ANSI player."""
-    query = ""
-    cursor = 0
+    query = safe_text(_marsamp_view.get("query", ""))[:80]
+    try:
+        cursor = max(0, int(_marsamp_view.get("cursor", 0)))
+    except (TypeError, ValueError):
+        cursor = 0
+    mode = safe_text(_marsamp_view.get("mode", "sequential"))
+    if mode not in ("sequential", "shuffle"):
+        mode = "sequential"
+    remembered_track = int(_marsamp_view.get("track_id", 0) or 0)
+    entering = True
     notice = ""
     while True:
         try:
@@ -4947,10 +4975,23 @@ def marsamp(token: str) -> None:
             print("The optional music service may not be enabled on this installation.")
             pause()
             return
+        service_mode = safe_text(state.get("mode", mode))
+        if service_mode in ("sequential", "shuffle"):
+            mode = service_mode
+        current = state.get("track")
+        current_track = (int(current.get("id", 0))
+                         if isinstance(current, dict) else 0)
+        if entering and current_track and current_track != remembered_track:
+            for position, row in enumerate(tracks):
+                if int(row["id"]) == current_track:
+                    cursor = position
+                    break
+        entering = False
         cursor = max(0, min(cursor, len(tracks) - 1)) if tracks else 0
+        _marsamp_view.update(query=query, cursor=cursor, mode=mode,
+                             track_id=current_track)
         heading("MARSAMP 0.1", "NAS01 primary / UNR01 secondary",
                 str(state.get("action", "stop")).upper())
-        current = state.get("track")
         if isinstance(current, dict):
             artist = safe_text(current.get("artist", ""))
             title = safe_text(current.get("title", "Untitled"))
@@ -4963,7 +5004,7 @@ def marsamp(token: str) -> None:
                        for index in range(min(24, max(8, width() // 3))))
         print(styled(bars, GREEN if active else DIM))
         print(styled(f"{int(stats.get('tracks', 0))} tracks indexed  "
-                     f"Search: {query or '(all)'}", DIM))
+                     f"Search: {query or '(all)'}  Mode: {mode.upper()}", DIM))
         print()
         if tracks:
             page_size = max(4, min(10, shutil.get_terminal_size((80, 24)).lines - 15))
@@ -4979,7 +5020,7 @@ def marsamp(token: str) -> None:
         if notice:
             print(styled("\n" + clip(notice, width()), YELLOW))
         controls = ("[Z] previous  [X/Enter] play  [C] pause  [V] stop  [B] next  "
-                    "[S] search  [P] pair audio  [Q/Esc] return")
+                    "[M] sequential/shuffle  [S] search  [P] pair audio  [Q/Esc] return")
         print()
         for line in textwrap.wrap(controls, width=max(20, width()),
                                   break_long_words=False, break_on_hyphens=False):
@@ -4997,20 +5038,28 @@ def marsamp(token: str) -> None:
             elif choice == "k":
                 cursor = max(0, cursor - 1)
             elif choice in ("", "x") and tracks:
-                notice = _marsamp_play(token, tracks[cursor])
+                notice = _marsamp_play(token, tracks[cursor], tracks, mode)
             elif choice == "z" and tracks:
                 cursor = (cursor - 1) % len(tracks)
-                notice = _marsamp_play(token, tracks[cursor])
+                _marsamp_view.update(query=query, cursor=cursor, mode=mode)
+                notice = _marsamp_play(token, tracks[cursor], tracks, mode)
             elif choice == "b" and tracks:
                 cursor = (cursor + 1) % len(tracks)
-                notice = _marsamp_play(token, tracks[cursor])
+                _marsamp_view.update(query=query, cursor=cursor, mode=mode)
+                notice = _marsamp_play(token, tracks[cursor], tracks, mode)
             elif choice == "c":
                 call("music", "pause", token=token)
             elif choice == "v":
                 call("music", "stop", token=token)
+            elif choice == "m":
+                mode = "shuffle" if mode == "sequential" else "sequential"
+                call("music", "mode", {"mode": mode}, token)
+                _marsamp_view.update(query=query, cursor=cursor, mode=mode)
+                notice = "Play mode changed to " + mode.upper() + "."
             elif choice == "s":
                 query = input("Artist, album, or title (blank shows all): ").strip()[:80]
                 cursor = 0
+                _marsamp_view.update(query=query, cursor=cursor)
             elif choice == "p":
                 pairing = call("music", "pair", token=token)
                 _marsamp_pairing_screen(pairing["url"])

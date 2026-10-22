@@ -32,6 +32,7 @@ MANAGE_CAPABILITY = "music.manage"
 PAIR_SECONDS = 90
 BROWSER_SECONDS = 8 * 60 * 60
 MAX_RESULTS = 50
+PLAY_MODES = {"sequential", "shuffle"}
 TOKEN_RE = re.compile(r"[A-Za-z0-9_-]{43,86}\Z")
 SUPPORTED = {
     ".aac": "audio/aac",
@@ -107,6 +108,7 @@ class Music:
         self.public_url = public_url.rstrip("/")
         parsed = urlparse(self.public_url)
         self.base_path = parsed.path.rstrip("/")
+        self.public_origin = f"{parsed.scheme}://{parsed.netloc}"
         self.lock = threading.RLock()
         self.pair_tickets: dict[str, dict[str, object]] = {}
         self.browser_sessions: dict[str, dict[str, object]] = {}
@@ -422,23 +424,84 @@ class Music:
                 state["stream"] = f"{self.base_path}/audio/{track_id}"
             except RPCError:
                 state.update({"action": "stop", "track_id": 0})
+        state.pop("queue", None)
         return state
 
-    def command(self, account_id: int, action: str, track_id: int = 0) -> dict[str, object]:
+    def _play_queue(self, raw: object, selected: int) -> list[int]:
+        if raw is None:
+            return [selected]
+        if not isinstance(raw, list) or not 1 <= len(raw) <= MAX_RESULTS:
+            raise RPCError("invalid playback list")
+        queue: list[int] = []
+        for value in raw:
+            track_id = integer(value, "playback list track id")
+            if track_id not in queue:
+                self._public_track(track_id)
+                queue.append(track_id)
+        if selected not in queue:
+            queue.insert(0, selected)
+        return queue
+
+    @staticmethod
+    def _play_mode(value: object) -> str:
+        mode = text(value, "play mode", 16).strip().casefold()
+        if mode not in PLAY_MODES:
+            raise RPCError("invalid play mode")
+        return mode
+
+    def command(self, account_id: int, action: str, track_id: int = 0,
+                queue: object = None, mode: object = None) -> dict[str, object]:
         if action not in ("play", "pause", "stop"):
             raise RPCError("invalid playback command")
         if action == "play":
             self._public_track(track_id)
         with self.lock:
-            previous = self.playback.get(account_id, {"serial": 0, "track_id": 0})
+            previous = self.playback.get(account_id, {
+                "serial": 0, "track_id": 0, "queue": [], "mode": "sequential",
+            })
             selected = track_id if action == "play" else int(previous.get("track_id", 0))
             if action == "stop":
                 selected = 0
+            selected_queue = (self._play_queue(queue, track_id) if action == "play"
+                              else list(previous.get("queue", [])))
+            selected_mode = (self._play_mode(mode) if mode is not None
+                             else str(previous.get("mode", "sequential")))
             self.playback[account_id] = {
                 "serial": int(previous.get("serial", 0)) + 1,
                 "action": action, "track_id": selected,
+                "queue": selected_queue, "mode": selected_mode,
             }
         return self.state(account_id)
+
+    def set_mode(self, account_id: int, mode: object) -> dict[str, object]:
+        selected_mode = self._play_mode(mode)
+        with self.lock:
+            state = self.playback.setdefault(account_id, {
+                "serial": 0, "action": "stop", "track_id": 0, "queue": [],
+                "mode": "sequential",
+            })
+            state["mode"] = selected_mode
+        return self.state(account_id)
+
+    def advance(self, account_id: int) -> dict[str, object]:
+        """Advance a browser sink within its terminal-selected playback list."""
+        with self.lock:
+            current = self.playback.get(account_id)
+            if not current or current.get("action") != "play":
+                return self.state(account_id)
+            queue = [int(value) for value in current.get("queue", [])]
+            if not queue:
+                return self.command(account_id, "stop")
+            track_id = int(current.get("track_id", 0))
+            mode = str(current.get("mode", "sequential"))
+            if mode == "shuffle" and len(queue) > 1:
+                selected = secrets.choice([value for value in queue if value != track_id])
+            else:
+                try:
+                    selected = queue[(queue.index(track_id) + 1) % len(queue)]
+                except ValueError:
+                    selected = queue[0]
+            return self.command(account_id, "play", selected, queue, mode)
 
     def handle(self, req: dict[str, object], peer: tuple[int, int, int]) -> dict[str, object]:
         op = str(req["op"])
@@ -487,11 +550,16 @@ class Music:
             elif data:
                 raise RPCError("invalid playback request")
             account_id = int(ident["account_id"])
-            result = self.command(account_id, op, track_id)
+            result = self.command(account_id, op, track_id,
+                                  data.get("queue"), data.get("mode"))
             if op == "play" and not self.browser_active(account_id):
                 result["pair_url"] = self._new_pair(
                     ident, str(req["token"]))["url"]
             return result
+        if op == "mode":
+            if set(data) != {"mode"}:
+                raise RPCError("invalid mode request")
+            return self.set_mode(int(ident["account_id"]), data["mode"])
         if op == "rescan":
             self._require(ident, MANAGE_CAPABILITY)
             if data:
@@ -512,32 +580,53 @@ def _player_html(base_path: str) -> bytes:
 font:16px ui-monospace,SFMono-Regular,Consolas,monospace;display:grid;min-height:100vh;
 place-items:center}} main{{width:min(94vw,620px);border:3px double var(--blue);padding:16px;
 background:var(--panel);box-shadow:0 0 32px #000}} h1{{color:var(--blue);font-size:1.3rem}}
-#track{{min-height:3em}} button{{background:#202743;color:var(--green);border:1px solid var(--green);
+#track{{min-height:3em}} #hint{{min-height:3em;color:#f4d35e;line-height:1.4}}
+button{{background:#202743;color:var(--green);border:1px solid var(--green);
 font:inherit;padding:.65em 1em;margin:.2em}} button:active{{background:var(--green);color:#111326}}
+#enable{{display:block;width:100%;margin:.5em 0 1em;background:var(--green);color:#111326;
+font-weight:800;font-size:1.05rem;border:3px double #111326;box-shadow:0 0 0 2px var(--green)}}
+#enable.attention{{animation:pulse 1.2s steps(2,end) infinite}}
+@keyframes pulse{{50%{{background:#f4d35e;box-shadow:0 0 18px #f4d35e}}}}
+@media (prefers-reduced-motion:reduce){{#enable.attention{{animation:none}}}}
 .meter{{height:50px;display:flex;gap:4px;align-items:end;margin:14px 0}}
 .meter i{{display:block;width:7%;background:var(--green);height:20%}}
 small{{display:block;color:#a6afc8;margin-top:12px;line-height:1.4}}
 </style></head><body><main><h1>MARSAMP // AUDIO SINK</h1>
-<div id="track">Paired with The Mars Hotel. Tap Enable Audio once.</div>
-<div class="meter" id="meter"></div><audio id="audio" preload="metadata"></audio>
-<div><button id="enable">Play Selected Song</button><button id="pause">Pause</button>
+<div id="track">Paired with The Mars Hotel. Loading the selected song...</div>
+<div id="hint" role="status">Attempting to start audio automatically.</div>
+<div id="mode">PLAY MODE: SEQUENTIAL</div>
+<div class="meter" id="meter"></div><audio id="audio" preload="metadata" autoplay playsinline></audio>
+<div><button id="enable" type="button">&#9654; PLAY SELECTED SONG</button><button id="pause">Pause</button>
 <button id="stop">Stop</button></div>
 <small>Keep this page open while controlling MarsAmp through SSH. No NAS path or BBS
 credential is stored in this page.</small></main><script>
 const BASE={base}; const audio=document.getElementById('audio'); let enabled=false, serial=-1;
-const meter=document.getElementById('meter'); for(let i=0;i<12;i++)meter.appendChild(document.createElement('i'));
+const meter=document.getElementById('meter'); const enable=document.getElementById('enable');
+const hint=document.getElementById('hint'); const mode=document.getElementById('mode');
+for(let i=0;i<12;i++)meter.appendChild(document.createElement('i'));
 function bars(on){{[...meter.children].forEach((b,i)=>b.style.height=on?(20+((Date.now()/160+i*29)%75))+'%':'8%')}}
-document.getElementById('enable').onclick=()=>{{enabled=true;if(audio.src)audio.play();}};
+function needsTap(){{enabled=false;enable.classList.add('attention');
+hint.textContent='Your browser blocked automatic audio. Tap PLAY SELECTED SONG once.';}}
+function audioReady(){{enabled=true;enable.classList.remove('attention');
+hint.textContent='Audio enabled. Keep this page open and choose songs through the BBS.';}}
+async function beginPlayback(){{if(!audio.src){{hint.textContent='Waiting for the selected song...';return}}
+try{{await audio.play();audioReady()}}catch(e){{needsTap()}}}}
+enable.onclick=beginPlayback;
 document.getElementById('pause').onclick=()=>audio.pause();
 document.getElementById('stop').onclick=()=>{{audio.pause();audio.currentTime=0}};
 async function poll(){{try{{let r=await fetch(BASE+'/api/state',{{cache:'no-store'}});
 if(r.status===401){{document.getElementById('track').textContent='BBS session ended. Pair again.';return}}
 let s=await r.json(); if(s.track)document.getElementById('track').textContent=
 (s.track.artist?s.track.artist+' - ':'')+s.track.title;
+mode.textContent='PLAY MODE: '+String(s.mode||'sequential').toUpperCase();
 if(s.serial!==serial){{serial=s.serial;if(s.action==='play'&&s.stream){{
-audio.src=s.stream;if(enabled)audio.play();else audio.play().then(()=>enabled=true).catch(()=>{{}});}}else if(s.action==='pause')audio.pause();
+audio.src=s.stream;await beginPlayback();}}else if(s.action==='pause')audio.pause();
 else if(s.action==='stop'){{audio.pause();audio.removeAttribute('src');audio.load();}}}}
 bars(!audio.paused);setTimeout(poll,750)}}catch(e){{setTimeout(poll,2000)}}}} poll();
+audio.addEventListener('ended',async()=>{{hint.textContent='Loading the next song...';
+try{{let r=await fetch(BASE+'/api/advance',{{method:'POST',credentials:'same-origin'}});
+if(!r.ok)hint.textContent='Unable to advance. Return to the BBS and pair again.';
+}}catch(e){{hint.textContent='Unable to advance. Check the connection.';}}}});
 </script></body></html>"""
     return page.encode("utf-8")
 
@@ -646,6 +735,20 @@ class MusicHTTP(BaseHTTPRequestHandler):
             self._headers(401, "text/plain; charset=utf-8")
             return
         self._headers(404, "text/plain; charset=utf-8")
+
+    def do_POST(self) -> None:  # noqa: N802 - stdlib handler contract
+        path = self._path()
+        if path != "/api/advance":
+            self._headers(404, "text/plain; charset=utf-8")
+            return
+        if self.headers.get("Origin") != self.music.public_origin:
+            self._headers(403, "text/plain; charset=utf-8")
+            return
+        try:
+            ident = self._identity()
+            self._json(self.music.advance(int(ident["account_id"])))
+        except RPCError as exc:
+            self._json({"error": str(exc)}, 401)
 
     def _stream(self, track_id: int, head: bool) -> None:
         row, filename = self.music._track_file(track_id)
