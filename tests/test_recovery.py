@@ -115,6 +115,17 @@ class RecoveryTests(unittest.TestCase):
                 process.terminate()
                 process.join(timeout=2)
 
+    def test_terminal_hyperlink_is_clickable_and_scrubs_controls(self):
+        from marsv2 import ui
+        with patch.object(ui.sys.stdout, "isatty", return_value=True), \
+                patch.dict(ui.os.environ, {"TERM": "xterm-256color"}):
+            rendered = ui.terminal_hyperlink(
+                "OPEN MARSAMP", "https://bbs.example.test/marsamp/pair/token\033]spoof")
+        self.assertIn("\033]8;;https://bbs.example.test/marsamp/pair/token?]spoof\033\\",
+                      rendered)
+        self.assertIn("OPEN MARSAMP", rendered)
+        self.assertEqual(rendered.count("\033"), 4)
+
     def test_board_authentication_and_write_read(self):
         identity = {"account_id": 1, "userid": "tester", "roles": ["Basic-1"], "capabilities": []}
         with tempfile.TemporaryDirectory() as directory:

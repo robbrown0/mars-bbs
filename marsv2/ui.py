@@ -319,6 +319,15 @@ def safe_text(value: object, multiline: bool = False) -> str:
     return "".join(rendered)
 
 
+def terminal_hyperlink(label: object, url: object) -> str:
+    """Render an OSC 8 link with an inert label and URL for capable terminals."""
+    clean_label = safe_text(label)
+    clean_url = safe_text(url)
+    if sys.stdout.isatty() and os.environ.get("TERM") != "dumb":
+        return f"\033]8;;{clean_url}\033\\{clean_label}\033]8;;\033\\"
+    return clean_label
+
+
 def width() -> int:
     # SSH supplies the PTY dimensions and sends window-change notifications as
     # a phone rotates or its on-screen keyboard opens.  Honor narrow clients;
@@ -4979,7 +4988,11 @@ def marsamp(token: str) -> None:
                 pairing = call("music", "pair", token=token)
                 heading("MARSAMP AUDIO PAIRING",
                         "Open once in a PC or phone browser; ticket expires quickly")
-                print("\n" + safe_text(pairing["url"]) + "\n")
+                pairing_url = safe_text(pairing["url"])
+                print("\n" + terminal_hyperlink("OPEN MARSAMP IN BROWSER", pairing_url))
+                print(pairing_url + "\n")
+                print("Tap or click the OPEN link. If your terminal does not support links,")
+                print("open the plain address shown above.")
                 print("The browser receives an opaque session cookie. Your BBS password,")
                 print("NAS locations, filenames, and internal service addresses are not sent.")
                 pause()
