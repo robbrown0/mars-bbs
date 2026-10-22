@@ -1,8 +1,11 @@
 """New recovery verification tests; synthetic data only."""
 import ast
 import importlib
+import multiprocessing
+import os
 from pathlib import Path
 import tempfile
+import time
 import unittest
 from unittest.mock import patch
 from marsv2 import rpc, authd, boardd, maild, games, migrate, sodium, informationd
@@ -10,6 +13,12 @@ from marsv2 import rpc, authd, boardd, maild, games, migrate, sodium, informatio
 
 def req(op, **data):
     return {"op": op, "data": data}
+
+
+def slow_rpc_handler(request, _peer):
+    if request["op"] == "slow":
+        time.sleep(0.15)
+    return {"status": "ok"}
 
 
 class RecoveryTests(unittest.TestCase):
@@ -84,6 +93,27 @@ class RecoveryTests(unittest.TestCase):
             with self.subTest(raw_size=len(raw)), self.assertRaises(rpc.RPCError):
                 rpc.decode_packet(raw)
         self.assertEqual(rpc.decode_packet(b'{"v":1,"op":"health"}')["op"], "health")
+
+    def test_rpc_client_timeout_does_not_stop_server(self):
+        with tempfile.TemporaryDirectory() as directory:
+            socket_path = directory + "/service.sock"
+            process = multiprocessing.Process(
+                target=rpc.serve, args=(socket_path, slow_rpc_handler))
+            process.start()
+            try:
+                deadline = time.monotonic() + 2
+                while not os.path.exists(socket_path) and time.monotonic() < deadline:
+                    time.sleep(0.01)
+                self.assertTrue(os.path.exists(socket_path))
+                with self.assertRaises(TimeoutError):
+                    rpc.request(socket_path, "slow", timeout=0.01)
+                time.sleep(0.2)
+                response = rpc.request(socket_path, "health", timeout=1)
+                self.assertTrue(response["ok"])
+                self.assertEqual(response["data"]["status"], "ok")
+            finally:
+                process.terminate()
+                process.join(timeout=2)
 
     def test_board_authentication_and_write_read(self):
         identity = {"account_id": 1, "userid": "tester", "roles": ["Basic-1"], "capabilities": []}

@@ -112,5 +112,10 @@ def serve(path: str, handler: Callable[[dict[str, Any], tuple[int, int, int]], d
                         "data": {"error": "internal error"}}
         try:
             conn.sendall(encode_packet(response))
+        except OSError:
+            # A bounded client may time out and close while a slow operation
+            # is finishing. That disconnect must not terminate the service's
+            # accept loop and strand every later request.
+            pass
         finally:
             conn.close()
