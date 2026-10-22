@@ -1,0 +1,192 @@
+[
+  {
+    "slug": "all-time-picks",
+    "name": "All-Time Critics' Picks",
+    "description": "Acclaimed songs selected from major critics' all-time lists and matched to this library.",
+    "tracks": [
+      {"artist": "Aretha Franklin", "title": "Respect", "album": "I Never Loved a Man the Way I Love You"},
+      {"artist": "The Rolling Stones", "title": "Gimme Shelter", "album": "Let It Bleed"},
+      {"artist": "Stevie Wonder", "title": "Superstition"},
+      {"artist": "Prince & the Revolution", "title": "Purple Rain", "album": "Purple Rain"},
+      {"artist": "The Beatles", "title": "I Want to Hold Your Hand", "album": "1"},
+      {"artist": "Queen", "title": "Bohemian Rhapsody"},
+      {"artist": "Fleetwood Mac", "title": "Dreams", "album": "Rumours"},
+      {"artist": "Michael Jackson", "title": "Billie Jean", "album": "Thriller"},
+      {"artist": "Otis Redding", "title": "The Dock of the Bay"},
+      {"artist": "Bill Withers", "title": "Ain't No Sunshine"},
+      {"artist": "Bob Dylan", "title": "Tangled Up in Blue"},
+      {"artist": "Simon & Garfunkel", "title": "The Sound of Silence"}
+    ]
+  },
+  {
+    "slug": "classic-rock-hall",
+    "name": "Classic Rock Hall",
+    "description": "Canonical guitar, album-rock, and arena classics available on the NAS.",
+    "tracks": [
+      {"artist": "Led Zeppelin", "title": "Stairway to Heaven"},
+      {"artists": ["Eagles", "The Eagles"], "title": "Hotel California"},
+      {"artist": "Pink Floyd", "title": "Comfortably Numb"},
+      {"artist": "Guns N' Roses", "title": "Sweet Child O' Mine"},
+      {"artists": ["AC/DC", "Ac_Dc"], "title": "Back in Black"},
+      {"artist": "Lynyrd Skynyrd", "title": "Free Bird"},
+      {"artist": "Rush", "title": "Tom Sawyer"},
+      {"artist": "Journey", "title": "Don't Stop Believin'", "album": "Escape"},
+      {"artist": "Creedence Clearwater Revival", "title": "Fortunate Son"},
+      {"artist": "Kansas", "title": "Carry On Wayward Son"},
+      {"artist": "Aerosmith", "title": "Dream On"},
+      {"artist": "Dire Straits", "title": "Sultans of Swing"}
+    ]
+  },
+  {
+    "slug": "seventies-gold",
+    "name": "1970s Gold",
+    "description": "A critically enduring mix of rock, pop, soul, and disco from the 1970s.",
+    "tracks": [
+      {"artist": "Fleetwood Mac", "title": "Go Your Own Way", "album": "Rumours"},
+      {"artist": "Fleetwood Mac", "title": "Dreams", "album": "Rumours"},
+      {"artist": "Elton John", "title": "Tiny Dancer"},
+      {"artist": "Elton John", "title": "Rocket Man"},
+      {"artist": "Don McLean", "title": "American Pie"},
+      {"artist": "Stevie Wonder", "title": "Superstition"},
+      {"artist": "Billy Joel", "title": "Piano Man"},
+      {"artist": "Bee Gees", "title": "Stayin' Alive"},
+      {"artist": "The Steve Miller Band", "title": "The Joker"},
+      {"artist": "The Eagles", "title": "Take It Easy"},
+      {"artist": "Pink Floyd", "title": "Wish You Were Here", "album": "Wish You Were Here"},
+      {"artist": "Queen", "title": "Bohemian Rhapsody"}
+    ]
+  },
+  {
+    "slug": "eighties-essentials",
+    "name": "1980s Essentials",
+    "description": "Defining chart, rock, and new-wave songs from the 1980s.",
+    "tracks": [
+      {"artist": "Prince & the Revolution", "title": "Purple Rain", "album": "Purple Rain"},
+      {"artist": "The Police", "title": "Every Breath You Take"},
+      {"artist": "Michael Jackson", "title": "Billie Jean", "album": "Thriller"},
+      {"artist": "Madonna", "title": "Like a Prayer"},
+      {"artist": "Guns N' Roses", "title": "Sweet Child O' Mine"},
+      {"artist": "Bon Jovi", "title": "Livin' on a Prayer"},
+      {"artist": "Toto", "title": "Africa"},
+      {"artist": "a-ha", "title": "Take on Me"},
+      {"artist": "Cyndi Lauper", "title": "Time After Time"},
+      {"artist": "Simple Minds", "title": "Don't You (Forget About Me)"},
+      {"artist": "U2", "title": "With or Without You", "album": "The Joshua Tree"},
+      {"artist": "Blondie", "title": "Call Me"}
+    ]
+  },
+  {
+    "slug": "nineties-alternative",
+    "name": "1990s Alternative",
+    "description": "Highly rated alternative, grunge, and crossover staples from the 1990s.",
+    "tracks": [
+      {"artist": "Nirvana", "title": "Come as You Are", "album": "MTV Unplugged in New York"},
+      {"artist": "R.E.M", "title": "Losing My Religion"},
+      {"artist": "Red Hot Chili Peppers", "title": "Under the Bridge"},
+      {"artist": "Soundgarden", "title": "Black Hole Sun"},
+      {"artist": "Oasis", "title": "Wonderwall"},
+      {"artist": "The Cranberries", "title": "Zombie"},
+      {"artist": "Blind Melon", "title": "No Rain"},
+      {"artist": "The Goo Goo Dolls", "title": "Iris"},
+      {"artist": "Alanis Morissette", "title": "You Oughta Know"},
+      {"artist": "Sinead O'Connor", "title": "Nothing Compares 2 U"},
+      {"artist": "Collective Soul", "title": "Shine"},
+      {"artist": "Barenaked Ladies", "title": "One Week", "album": "Stunt"}
+    ]
+  },
+  {
+    "slug": "country-legends",
+    "name": "Country Legends",
+    "description": "Landmark country recordings and durable standards represented in the library.",
+    "tracks": [
+      {"artist": "Johnny Cash", "title": "Ring of Fire"},
+      {"artist": "Johnny Cash", "title": "I Walk the Line"},
+      {"artist": "George Jones", "title": "He Stopped Loving Her Today"},
+      {"artist": "George Strait", "title": "Amarillo by Morning"},
+      {"artist": "Loretta Lynn", "title": "Coal Miner's Daughter"},
+      {"artist": "Willie Nelson", "title": "Blue Eyes Crying in the Rain"},
+      {"artist": "Kenny Rogers", "title": "The Gambler"},
+      {"artist": "Garth Brooks", "title": "Friends in Low Places"},
+      {"artist": "Garth Brooks", "title": "The Thunder Rolls"},
+      {"artist": "Alan Jackson", "title": "Chattahoochee"},
+      {"artist": "Brooks & Dunn", "title": "Boot Scootin' Boogie"},
+      {"artist": "John Denver", "title": "Take Me Home, Country Roads"}
+    ]
+  },
+  {
+    "slug": "soul-rnb-classics",
+    "name": "Soul & R&B Classics",
+    "description": "Foundational soul and R&B performances chosen from acclaimed catalog staples.",
+    "tracks": [
+      {"artist": "Aretha Franklin", "title": "Respect"},
+      {"artist": "Aretha Franklin", "title": "Natural Woman"},
+      {"artist": "Stevie Wonder", "title": "Superstition"},
+      {"artist": "Stevie Wonder", "title": "Sir Duke"},
+      {"artist": "Stevie Wonder", "title": "Signed, Sealed, Delivered"},
+      {"artist": "Bill Withers", "title": "Ain't No Sunshine"},
+      {"artist": "Bill Withers", "title": "Lean on Me"},
+      {"artist": "Bill Withers", "title": "Lovely Day"},
+      {"artist": "Bill Withers", "title": "Use Me"},
+      {"artist": "Otis Redding", "title": "The Dock of the Bay"},
+      {"artist": "Michael Jackson", "title": "Billie Jean"},
+      {"artist": "Michael Jackson", "title": "Beat It"}
+    ]
+  },
+  {
+    "slug": "songwriters",
+    "name": "Great Songwriters",
+    "description": "Acclaimed writing and intimate performances spanning folk, rock, and country.",
+    "tracks": [
+      {"artist": "James Taylor", "title": "Fire and Rain"},
+      {"artist": "James Taylor", "title": "You've Got a Friend"},
+      {"artist": "James Taylor", "title": "Carolina in My Mind"},
+      {"artist": "Joni Mitchell", "title": "California", "album": "Blue"},
+      {"artist": "Simon & Garfunkel", "title": "The Sound of Silence"},
+      {"artist": "Simon & Garfunkel", "title": "Bridge over Troubled Water"},
+      {"artist": "Bob Dylan", "title": "Tangled Up in Blue"},
+      {"artist": "Bob Dylan", "title": "The Times They Are A-Changin'"},
+      {"artist": "Elton John", "title": "Your Song"},
+      {"artist": "Johnny Cash", "title": "Hurt", "album": "American IV"},
+      {"artist": "Neil Young", "title": "Heart of Gold", "album": "Harvest"},
+      {"artist": "Bonnie Raitt", "title": "Angel from Montgomery"}
+    ]
+  },
+  {
+    "slug": "party-starters",
+    "name": "Party Starters",
+    "description": "Upbeat, familiar crowd favorites for a lively MarsAmp session.",
+    "tracks": [
+      {"artist": "ABBA", "title": "Dancing Queen"},
+      {"artist": "Michael Jackson", "title": "Billie Jean"},
+      {"artist": "Michael Jackson", "title": "Beat It"},
+      {"artist": "Michael Jackson", "title": "Thriller"},
+      {"artist": "Cyndi Lauper", "title": "Girls Just Want to Have Fun"},
+      {"artist": "Kenny Loggins", "title": "Footloose"},
+      {"artist": "Mark Ronson", "title": "Uptown Funk"},
+      {"artist": "Taylor Swift", "title": "Shake It Off"},
+      {"artist": "The Black Eyed Peas", "title": "I Gotta Feeling"},
+      {"artist": "Rick James", "title": "Super Freak"},
+      {"artist": "Blondie", "title": "Call Me"},
+      {"artist": "Bee Gees", "title": "Stayin' Alive"}
+    ]
+  },
+  {
+    "slug": "open-road",
+    "name": "Open Road",
+    "description": "Top road-trip songs for highways, long drives, and late-night miles.",
+    "tracks": [
+      {"artist": "The Eagles", "title": "Take It Easy"},
+      {"artist": "Willie Nelson", "title": "On the Road Again"},
+      {"artist": "Fleetwood Mac", "title": "Go Your Own Way"},
+      {"artist": "Tom Petty & The Heartbreakers", "title": "Free Fallin'"},
+      {"artist": "Tom Petty & The Heartbreakers", "title": "Runnin' Down a Dream"},
+      {"artist": "Tom Petty & The Heartbreakers", "title": "American Girl"},
+      {"artist": "Lynyrd Skynyrd", "title": "Sweet Home Alabama"},
+      {"artist": "Don Henley", "title": "The Boys of Summer"},
+      {"artist": "America", "title": "Ventura Highway"},
+      {"artist": "The Doobie Brothers", "title": "Listen to the Music"},
+      {"artist": "Dire Straits", "title": "Walk of Life"},
+      {"artist": "Creedence Clearwater Revival", "title": "Fortunate Son"}
+    ]
+  }
+]

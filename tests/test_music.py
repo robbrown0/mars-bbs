@@ -48,11 +48,20 @@ class MusicTests(unittest.TestCase):
         recycle.mkdir()
         (recycle / "deleted.mp3").write_bytes(b"deleted")
         os.symlink(self.nas01 / "Artist One", self.nas01 / "linked-artist")
+        self.playlists_file = root / "playlists.json"
+        self.playlists_file.write_text(json.dumps([{
+            "slug": "test-favorites", "name": "Test Favorites",
+            "description": "Only verified fixture tracks.",
+            "tracks": [
+                {"artist": "Artist One", "title": "Track Two"},
+                {"artist": "Artist One", "title": "Track One"},
+            ],
+        }]), encoding="utf-8")
         self.music = Music(
             str(root / "music.db"), "/unused/session.sock",
             {"nas01": str(self.nas01), "unr01": str(self.unr01)},
             "https://bbs.example.test/marsamp",
-            str(self.extra),
+            str(self.extra), str(self.playlists_file),
         )
         result = self.music.scan()
         self.assertEqual(result["tracks"], 3)
@@ -139,10 +148,49 @@ class MusicTests(unittest.TestCase):
         advanced = self.music.advance(IDENTITY["account_id"])
         self.assertEqual(advanced["track_id"], queue[0])
         self.music.set_mode(IDENTITY["account_id"], "shuffle")
-        with patch("marsv2.musicd.secrets.choice", return_value=queue[1]):
-            shuffled = self.music.advance(IDENTITY["account_id"])
-        self.assertEqual(shuffled["track_id"], queue[1])
-        self.assertEqual(shuffled["mode"], "shuffle")
+        first = self.music.advance(IDENTITY["account_id"])
+        second = self.music.advance(IDENTITY["account_id"])
+        self.assertNotEqual(first["track_id"], queue[0])
+        self.assertNotEqual(second["track_id"], first["track_id"])
+        self.assertEqual({first["track_id"], second["track_id"]}, set(queue[1:]))
+        self.assertEqual(second["mode"], "shuffle")
+        previous = self.music.previous(IDENTITY["account_id"])
+        self.assertEqual(previous["track_id"], first["track_id"])
+
+    def test_curated_playlists_resolve_only_available_catalog_tracks(self) -> None:
+        with patch("marsv2.musicd.validate", return_value=IDENTITY):
+            playlists = self.music.handle(
+                self.request("playlists"), (1, 29901, 29901))["playlists"]
+            selected = self.music.handle(self.request("playlist_tracks", {
+                "slug": "test-favorites", "offset": 0, "limit": 10,
+            }), (1, 29901, 29901))
+        self.assertEqual(playlists[0]["name"], "Test Favorites")
+        self.assertEqual(playlists[0]["tracks"], 2)
+        self.assertEqual([row["title"] for row in selected["tracks"]],
+                         ["Track Two", "Track One"])
+        self.assertNotIn("relative_path", repr(selected))
+
+    def test_shipped_playlist_manifest_has_ten_reviewed_lists(self) -> None:
+        filename = Path(__file__).resolve().parents[1] / "assets" / "music-playlists.json"
+        playlists = Music._load_playlists(str(filename))
+        self.assertEqual(len(playlists), 10)
+        self.assertTrue(all(len(playlist["tracks"]) == 12 for playlist in playlists))
+        self.assertEqual(len({playlist["slug"] for playlist in playlists}), 10)
+
+    def test_advance_rpc_uses_shuffle_queue(self) -> None:
+        with patch("marsv2.musicd.validate", return_value=IDENTITY), \
+                patch.object(self.music, "browser_active", return_value=True):
+            rows = self.music.handle(self.request(
+                "search", {"query": "", "limit": 10, "offset": 0}),
+                (1, 29901, 29901))["tracks"]
+            queue = [int(row["id"]) for row in rows]
+            self.music.handle(self.request("play", {
+                "id": queue[0], "queue": queue, "mode": "shuffle",
+            }), (1, 29901, 29901))
+            first = self.music.handle(self.request("advance"), (1, 29901, 29901))
+            second = self.music.handle(self.request("advance"), (1, 29901, 29901))
+        self.assertNotEqual(first["track_id"], queue[0])
+        self.assertNotEqual(second["track_id"], first["track_id"])
 
     def test_admin_adds_and_removes_only_approved_extra_sources(self) -> None:
         added = self.extra / "third-library" / "New Artist" / "New Album"

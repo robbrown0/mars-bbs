@@ -18,6 +18,7 @@ import secrets
 import sqlite3
 import threading
 import time
+import unicodedata
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import quote, unquote, urlparse
@@ -73,6 +74,20 @@ CREATE TABLE IF NOT EXISTS extra_sources (
   relative_path TEXT NOT NULL UNIQUE,
   created_at INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS playlists (
+  slug TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  description TEXT NOT NULL,
+  position INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS playlist_tracks (
+  playlist_slug TEXT NOT NULL REFERENCES playlists(slug) ON DELETE CASCADE,
+  track_id INTEGER NOT NULL REFERENCES tracks(id),
+  position INTEGER NOT NULL,
+  PRIMARY KEY(playlist_slug,track_id)
+);
+CREATE INDEX IF NOT EXISTS playlist_tracks_order
+  ON playlist_tracks(playlist_slug,position);
 """
 
 
@@ -94,10 +109,22 @@ def _escape_like(value: str) -> str:
     return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
+def _music_key(value: str) -> str:
+    """Normalize uneven directory-derived music metadata for curated matching."""
+    ascii_value = unicodedata.normalize("NFKD", value).encode(
+        "ascii", "ignore").decode("ascii").casefold()
+    ascii_value = re.sub(
+        r"^[a-z0-9]+_\(disc_\d+\)_\d+_-_", "", ascii_value)
+    ascii_value = re.sub(r"^\s*\d{1,3}(?:-\d{1,3})?\s*[-_.]+\s*", "", ascii_value)
+    ascii_value = re.sub(r"^\s*\d{1,3}\s+", "", ascii_value)
+    return "".join(character for character in ascii_value if character.isalnum())
+
+
 class Music:
     def __init__(self, db_path: str, session_socket: str,
                  sources: dict[str, str], public_url: str,
-                 extra_root: str | None = None):
+                 extra_root: str | None = None,
+                 playlists_file: str | None = None):
         # RPC, catalog scanning, and HTTP range requests use separate threads;
         # every database access is serialized by self.lock.
         self.db = connect(db_path, check_same_thread=False)
@@ -116,6 +143,118 @@ class Music:
         self.scan_running = False
         self.last_scan = 0
         self.last_scan_result: dict[str, object] = {"tracks": 0, "errors": []}
+        self.playlist_definitions = self._load_playlists(playlists_file)
+        self._refresh_playlists()
+
+    @staticmethod
+    def _load_playlists(filename: str | None) -> list[dict[str, object]]:
+        if filename is None:
+            return []
+        try:
+            with open(filename, encoding="utf-8") as stream:
+                raw = json.load(stream)
+        except (OSError, json.JSONDecodeError) as exc:
+            raise RuntimeError("curated playlist file is unavailable or invalid") from exc
+        if not isinstance(raw, list) or len(raw) > 50:
+            raise RuntimeError("curated playlist file must contain a list")
+        result: list[dict[str, object]] = []
+        slugs: set[str] = set()
+        for position, playlist in enumerate(raw):
+            if not isinstance(playlist, dict):
+                raise RuntimeError("curated playlist entry is invalid")
+            slug = str(playlist.get("slug", ""))
+            name = str(playlist.get("name", ""))
+            description = str(playlist.get("description", ""))
+            tracks = playlist.get("tracks")
+            if (not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,47}", slug)
+                    or slug in slugs or not 1 <= len(name) <= 80
+                    or len(description) > 240 or not isinstance(tracks, list)
+                    or not 1 <= len(tracks) <= 100):
+                raise RuntimeError("curated playlist entry is invalid")
+            clean_tracks: list[dict[str, object]] = []
+            for track in tracks:
+                if not isinstance(track, dict):
+                    raise RuntimeError("curated playlist track is invalid")
+                title = str(track.get("title", ""))
+                artists = track.get("artists", [track.get("artist", "")])
+                album = str(track.get("album", ""))
+                if (not 1 <= len(title) <= 160 or not isinstance(artists, list)
+                        or not 1 <= len(artists) <= 8 or len(album) > 160
+                        or any(not isinstance(value, str) or not value or len(value) > 160
+                               for value in artists)):
+                    raise RuntimeError("curated playlist track is invalid")
+                clean_tracks.append({"title": title, "artists": artists, "album": album})
+            result.append({"slug": slug, "name": name, "description": description,
+                           "position": position, "tracks": clean_tracks})
+            slugs.add(slug)
+        return result
+
+    @staticmethod
+    def _playlist_match(track: sqlite3.Row, wanted: dict[str, object]) -> int:
+        artist_key = _music_key(str(track["artist"]))
+        if artist_key not in {_music_key(str(value)) for value in wanted["artists"]}:
+            return -1
+        title_key = _music_key(str(track["title"]))
+        wanted_title = _music_key(str(wanted["title"]))
+        if title_key == wanted_title:
+            score = 100
+        elif wanted_title in title_key:
+            score = 70
+        else:
+            return -1
+        wanted_album = _music_key(str(wanted.get("album", "")))
+        if wanted_album:
+            album_key = _music_key(str(track["album"]))
+            if album_key == wanted_album:
+                score += 30
+            elif wanted_album in album_key or album_key in wanted_album:
+                score += 15
+            else:
+                score -= 10
+        lowered = str(track["title"]).casefold()
+        if any(word in lowered for word in ("live", "demo", "tribute", "workout", "cover")):
+            score -= 20
+        return score
+
+    def _refresh_playlists(self) -> None:
+        """Resolve portable artist/title definitions against this host's catalog."""
+        with self.lock:
+            available = self.db.execute(
+                "SELECT id,title,artist,album FROM tracks WHERE available=1"
+            ).fetchall()
+            by_artist: dict[str, list[sqlite3.Row]] = {}
+            for row in available:
+                by_artist.setdefault(_music_key(str(row["artist"])), []).append(row)
+            resolved: list[tuple[str, int, int]] = []
+            for playlist in self.playlist_definitions:
+                used: set[int] = set()
+                for position, wanted in enumerate(playlist["tracks"]):
+                    matching_rows: list[sqlite3.Row] = []
+                    for artist in wanted["artists"]:
+                        matching_rows.extend(by_artist.get(_music_key(str(artist)), []))
+                    candidates = [(self._playlist_match(row, wanted), int(row["id"]))
+                                  for row in matching_rows]
+                    candidates = [item for item in candidates
+                                  if item[0] >= 0 and item[1] not in used]
+                    if candidates:
+                        _, track_id = max(candidates, key=lambda item: (item[0], -item[1]))
+                        resolved.append((str(playlist["slug"]), track_id, position))
+                        used.add(track_id)
+            self.db.execute("BEGIN IMMEDIATE")
+            try:
+                self.db.execute("DELETE FROM playlist_tracks")
+                self.db.execute("DELETE FROM playlists")
+                self.db.executemany(
+                    "INSERT INTO playlists(slug,name,description,position) VALUES(?,?,?,?)",
+                    [(item["slug"], item["name"], item["description"], item["position"])
+                     for item in self.playlist_definitions])
+                self.db.executemany(
+                    "INSERT INTO playlist_tracks(playlist_slug,track_id,position) VALUES(?,?,?)",
+                    resolved)
+                self.db.execute("COMMIT")
+            except BaseException:
+                self.db.execute("ROLLBACK")
+                raise
 
     def _extra_path(self, relative: str, *, require_directory: bool = True) -> str:
         if self.extra_root is None:
@@ -281,6 +420,7 @@ class Music:
             with self.lock:
                 self.last_scan = int(time.time())
                 self.last_scan_result = {"tracks": found_total, "errors": errors}
+            self._refresh_playlists()
             return {"started": True, "tracks": found_total, "errors": errors}
         finally:
             with self.lock:
@@ -313,6 +453,35 @@ class Music:
                 "LIMIT ? OFFSET ?", parameters + [limit, offset]).fetchall()
         return {"tracks": [dict(row) for row in rows], "total": total,
                 "offset": offset, "next_offset": offset + len(rows)}
+
+    def playlists(self) -> list[dict[str, object]]:
+        with self.lock:
+            rows = self.db.execute(
+                "SELECT p.slug,p.name,p.description,count(pt.track_id) AS tracks "
+                "FROM playlists p LEFT JOIN playlist_tracks pt ON pt.playlist_slug=p.slug "
+                "GROUP BY p.slug,p.name,p.description,p.position ORDER BY p.position"
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def playlist_tracks(self, slug: str, offset: int, limit: int) -> dict[str, object]:
+        with self.lock:
+            playlist = self.db.execute(
+                "SELECT slug,name,description FROM playlists WHERE slug=?", (slug,)
+            ).fetchone()
+            if playlist is None:
+                raise RPCError("playlist not found")
+            total = int(self.db.execute(
+                "SELECT count(*) FROM playlist_tracks pt JOIN tracks t ON t.id=pt.track_id "
+                "WHERE pt.playlist_slug=? AND t.available=1", (slug,)
+            ).fetchone()[0])
+            rows = self.db.execute(
+                "SELECT t.id,t.title,t.artist,t.album,t.source,t.extension,t.size "
+                "FROM playlist_tracks pt JOIN tracks t ON t.id=pt.track_id "
+                "WHERE pt.playlist_slug=? AND t.available=1 "
+                "ORDER BY pt.position LIMIT ? OFFSET ?", (slug, limit, offset)
+            ).fetchall()
+        return {"playlist": dict(playlist), "tracks": [dict(row) for row in rows],
+                "total": total, "offset": offset, "next_offset": offset + len(rows)}
 
     def _public_track(self, track_id: int) -> dict[str, object]:
         with self.lock:
@@ -425,6 +594,8 @@ class Music:
             except RPCError:
                 state.update({"action": "stop", "track_id": 0})
         state.pop("queue", None)
+        state.pop("shuffle_bag", None)
+        state.pop("history", None)
         return state
 
     def _play_queue(self, raw: object, selected: int) -> list[int]:
@@ -466,12 +637,25 @@ class Music:
                               else list(previous.get("queue", [])))
             selected_mode = (self._play_mode(mode) if mode is not None
                              else str(previous.get("mode", "sequential")))
+            shuffle_bag = (self._shuffled(selected_queue, selected)
+                           if action == "play" and selected_mode == "shuffle" else [])
             self.playback[account_id] = {
                 "serial": int(previous.get("serial", 0)) + 1,
                 "action": action, "track_id": selected,
                 "queue": selected_queue, "mode": selected_mode,
+                "shuffle_bag": shuffle_bag,
+                "history": [] if action == "play" else list(previous.get("history", [])),
             }
         return self.state(account_id)
+
+    @staticmethod
+    def _shuffled(queue: list[int], current: int) -> list[int]:
+        """Return a cryptographically randomized no-repeat cycle."""
+        bag = [value for value in queue if value != current]
+        for position in range(len(bag) - 1, 0, -1):
+            target = secrets.randbelow(position + 1)
+            bag[position], bag[target] = bag[target], bag[position]
+        return bag
 
     def set_mode(self, account_id: int, mode: object) -> dict[str, object]:
         selected_mode = self._play_mode(mode)
@@ -481,27 +665,68 @@ class Music:
                 "mode": "sequential",
             })
             state["mode"] = selected_mode
+            state["shuffle_bag"] = (self._shuffled(
+                [int(value) for value in state.get("queue", [])],
+                int(state.get("track_id", 0))) if selected_mode == "shuffle" else [])
         return self.state(account_id)
 
-    def advance(self, account_id: int) -> dict[str, object]:
-        """Advance a browser sink within its terminal-selected playback list."""
+    def _available_queue(self, raw: object) -> list[int]:
+        queue = [int(value) for value in raw if isinstance(value, int)] if isinstance(raw, list) else []
+        if not queue:
+            return []
+        placeholders = ",".join("?" for _ in queue)
+        available = {int(row[0]) for row in self.db.execute(
+            f"SELECT id FROM tracks WHERE available=1 AND id IN ({placeholders})", queue)}
+        return [value for value in queue if value in available]
+
+    def _move(self, account_id: int, backwards: bool = False) -> dict[str, object]:
         with self.lock:
             current = self.playback.get(account_id)
             if not current or current.get("action") != "play":
                 return self.state(account_id)
-            queue = [int(value) for value in current.get("queue", [])]
+            queue = self._available_queue(current.get("queue", []))
             if not queue:
                 return self.command(account_id, "stop")
             track_id = int(current.get("track_id", 0))
+            history = [int(value) for value in current.get("history", [])
+                       if int(value) in queue]
             mode = str(current.get("mode", "sequential"))
-            if mode == "shuffle" and len(queue) > 1:
-                selected = secrets.choice([value for value in queue if value != track_id])
+            if backwards and history:
+                selected = history.pop()
+            elif backwards:
+                try:
+                    selected = queue[(queue.index(track_id) - 1) % len(queue)]
+                except ValueError:
+                    selected = queue[-1]
+            elif mode == "shuffle" and len(queue) > 1:
+                bag = [int(value) for value in current.get("shuffle_bag", [])
+                       if int(value) in queue and int(value) != track_id]
+                if not bag:
+                    bag = self._shuffled(queue, track_id)
+                selected = bag.pop()
+                current["shuffle_bag"] = bag
+                if track_id in queue:
+                    history.append(track_id)
             else:
                 try:
                     selected = queue[(queue.index(track_id) + 1) % len(queue)]
                 except ValueError:
                     selected = queue[0]
-            return self.command(account_id, "play", selected, queue, mode)
+                if track_id in queue:
+                    history.append(track_id)
+            current.update({
+                "serial": int(current.get("serial", 0)) + 1,
+                "action": "play", "track_id": selected,
+                "queue": queue, "history": history[-MAX_RESULTS:],
+            })
+        return self.state(account_id)
+
+    def advance(self, account_id: int) -> dict[str, object]:
+        """Advance a browser sink within its terminal-selected playback list."""
+        return self._move(account_id)
+
+    def previous(self, account_id: int) -> dict[str, object]:
+        return self._move(account_id, backwards=True)
 
     def handle(self, req: dict[str, object], peer: tuple[int, int, int]) -> dict[str, object]:
         op = str(req["op"])
@@ -537,6 +762,17 @@ class Music:
             offset = integer(data.get("offset", 0), "offset", 0, 10_000_000)
             limit = integer(data.get("limit", 20), "limit", 1, MAX_RESULTS)
             return self._search(query, offset, limit)
+        if op == "playlists":
+            if data:
+                raise RPCError("invalid playlists request")
+            return {"playlists": self.playlists()}
+        if op == "playlist_tracks":
+            if set(data) - {"slug", "offset", "limit"}:
+                raise RPCError("invalid playlist request")
+            slug = text(data.get("slug"), "playlist", 48).strip().casefold()
+            offset = integer(data.get("offset", 0), "offset", 0, 10_000_000)
+            limit = integer(data.get("limit", 20), "limit", 1, MAX_RESULTS)
+            return self.playlist_tracks(slug, offset, limit)
         if op == "pair":
             if data:
                 raise RPCError("invalid pairing request")
@@ -560,6 +796,15 @@ class Music:
             if set(data) != {"mode"}:
                 raise RPCError("invalid mode request")
             return self.set_mode(int(ident["account_id"]), data["mode"])
+        if op in ("advance", "previous"):
+            if data:
+                raise RPCError("invalid playback request")
+            account_id = int(ident["account_id"])
+            result = (self.advance(account_id) if op == "advance"
+                      else self.previous(account_id))
+            if result.get("action") == "play" and not self.browser_active(account_id):
+                result["pair_url"] = self._new_pair(ident, str(req["token"]))["url"]
+            return result
         if op == "rescan":
             self._require(ident, MANAGE_CAPABILITY)
             if data:
@@ -805,6 +1050,7 @@ def main() -> None:
     parser.add_argument("--session-socket", required=True)
     parser.add_argument("--source", action="append", type=parse_source, default=[])
     parser.add_argument("--extra-root")
+    parser.add_argument("--playlists-file")
     parser.add_argument("--public-url", required=True)
     parser.add_argument("--http-host", default="0.0.0.0")
     parser.add_argument("--http-port", type=int, default=8080)
@@ -818,7 +1064,8 @@ def main() -> None:
     sources = dict(args.source)
     if not sources:
         raise SystemExit("at least one music source is required")
-    music = Music(args.db, args.session_socket, sources, args.public_url, args.extra_root)
+    music = Music(args.db, args.session_socket, sources, args.public_url, args.extra_root,
+                  args.playlists_file)
     MusicHTTP.music = music
     if args.scan_on_start:
         music.start_scan()

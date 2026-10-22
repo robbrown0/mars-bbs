@@ -23,7 +23,7 @@ Validated on 2026-10-21:
 - external IRC parsing, local capability authentication, quiet-user presence, relay, sanitization, TLS, reconnect and NickServ refresh passed against local fixtures
 - deterministic information parsing, cache controls, SSRF allowlist and terminal-control removal passed
 - linked-BBS mail passed real pinned-TLS delivery, HMAC authentication, replay and duplicate rejection, sender and peer rate limits, queue status, hidden route metadata and bad-certificate rejection
-- MarsAmp passed two-source catalog scanning, trash and symlink exclusion, role enforcement, path non-disclosure, one-time session-bound browser pairing and authenticated HTTP byte-range streaming
+- MarsAmp passed two-source catalog scanning, trash and symlink exclusion, role enforcement, path non-disclosure, curated-playlist resolution, no-repeat shuffle cycles, shared browser/terminal advancement, playback history, one-time session-bound browser pairing and authenticated HTTP byte-range streaming
 - isolated live collectors returned data from CISA, CelesTrak, EFF, Global Voices, NASA, NOAA, TVmaze, USGS and Wikipedia; market data correctly reported unavailable without its optional key
 - Compose configuration, non-root identities, read-only filesystems, dropped capabilities and published-port policy were inspected
 - a staged-tree Gitleaks scan found no secrets; repeat the scan on every release commit
