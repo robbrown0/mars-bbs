@@ -96,6 +96,24 @@ class MusicTests(unittest.TestCase):
             identity = self.music.browser_identity(browser)
         self.assertEqual(identity["account_id"], 7)
 
+    def test_play_offers_pairing_until_browser_is_actively_polling(self) -> None:
+        with patch("marsv2.musicd.validate", return_value=IDENTITY):
+            track_id = int(self.music.handle(
+                self.request("search", {"query": "Track One", "limit": 10, "offset": 0}),
+                (1, 29901, 29901))["tracks"][0]["id"])
+            first = self.music.handle(
+                self.request("play", {"id": track_id}), (1, 29901, 29901))
+        self.assertEqual(first["action"], "play")
+        self.assertIn("pair_url", first)
+        browser = self.music.redeem_pair(str(first["pair_url"]).rsplit("/", 1)[1])
+        with patch("marsv2.musicd.request",
+                   return_value={"ok": True, "data": IDENTITY}):
+            self.music.browser_identity(browser)
+        with patch("marsv2.musicd.validate", return_value=IDENTITY):
+            paired = self.music.handle(
+                self.request("play", {"id": track_id}), (1, 29901, 29901))
+        self.assertNotIn("pair_url", paired)
+
     def test_admin_adds_and_removes_only_approved_extra_sources(self) -> None:
         added = self.extra / "third-library" / "New Artist" / "New Album"
         added.mkdir(parents=True)
