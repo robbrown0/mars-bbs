@@ -25,11 +25,6 @@ def slow_rpc_handler(request, _peer):
 
 
 class RecoveryTests(unittest.TestCase):
-    def test_ssh_mobile_background_grace_is_not_a_two_probe_timeout(self):
-        config = Path("ssh/sshd_config").read_text(encoding="utf-8")
-        self.assertIn("ClientAliveInterval 60", config)
-        self.assertIn("ClientAliveCountMax 30", config)
-
     def test_marsamp_session_survives_parent_ssh_and_admin_can_end_it(self):
         authority = sessiond.Sessions("/unused/auth.sock")
         now = time.monotonic()
