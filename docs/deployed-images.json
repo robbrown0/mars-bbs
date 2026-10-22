@@ -2,8 +2,8 @@
   {
     "service": "gateway",
     "container": "mars-v2ssh-gateway",
-    "image": "sha256:fc0413dfc1d6cb2eefff4cf422f99ecafd863848606459ee3219b42f725c86fd",
-    "tag": "mars-hotel-v2-gateway:marsamp-playlists-20261022",
+    "image": "sha256:e36a78c79bd5b98d06442c7c0ae1900fee4777af3a7a260359ce08f2a6d5ac10",
+    "tag": "mars-hotel-v2-gateway:marsamp-mobile-input-20261022",
     "user": "root",
     "running": true,
     "read_only": true
