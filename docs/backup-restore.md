@@ -4,6 +4,8 @@ Backups contain account data and private messages. Encrypt them at rest, restric
 
 SQLite databases must be copied with the SQLite online backup API or during a controlled service stop that also accounts for WAL files. Copying an active database file alone is not a valid backup. Docker volume archives should preserve numeric owners documented in [architecture.md](architecture.md).
 
+The optional MarsAmp catalog is derived data and can be rebuilt from the read-only libraries; it does not need to be backed up. The music itself is outside the Compose volumes and requires its own storage backup policy. Do not copy music or the catalog into a public source archive.
+
 Restore into a new isolated Compose project first:
 
 1. create fresh named volumes without starting public services

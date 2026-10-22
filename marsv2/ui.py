@@ -60,6 +60,7 @@ RESET = "\033[0m"
 BOLD = "\033[1m"
 DIM = "\033[2m"
 CYAN = "\033[36m"
+GREEN = "\033[32m"
 YELLOW = "\033[33m"
 REVERSE = "\033[7m"
 IDLE_AFTER_SECONDS = 300
@@ -2908,7 +2909,7 @@ def utilities(identity: dict[str, object]) -> None:
 ADMIN_CAPABILITIES = {
     "account.view", "account.manage", "account.password_reset", "account.delete",
     "account.roles", "board.manage", "board.moderate", "session.manage",
-    "audit.read", "system.health", "federation.manage",
+    "audit.read", "system.health", "federation.manage", "music.manage",
 }
 
 
@@ -3499,8 +3500,8 @@ def _admin_audit(token: str) -> None:
 
 def _admin_health(token: str) -> None:
     lines = []
-    for service in ("auth", "session", "mail", "board", "file", "chat", "game", "door",
-                    "information", "irc"):
+    for service in ("auth", "session", "mail", "board", "file", "music", "chat",
+                    "game", "door", "information", "irc"):
         try:
             result = call(service, "health")
             state = str(result.get("status", "ok")).upper()
@@ -3510,6 +3511,98 @@ def _admin_health(token: str) -> None:
     lines.extend(("", "Host and container control deliberately remain outside the BBS."))
     _text_viewer("SYSTEM HEALTH", "Authority reachability from this authenticated session",
                  "\n".join(lines))
+
+
+def _admin_marsamp(token: str) -> None:
+    """Show the bounded music catalog state and allow an explicit rescan."""
+    notice = ""
+    cursor = 0
+    while True:
+        try:
+            stats = call("music", "stats", token=token)
+            sources = list(call("music", "admin_sources", token=token).get("sources", []))
+        except (OSError, RPCError) as exc:
+            heading("MARSAMP ADMINISTRATION", "Catalog status and source maintenance")
+            print("\nMarsAmp is unavailable: " + safe_text(exc))
+            pause()
+            return
+        heading("MARSAMP ADMINISTRATION", "Catalog status and source maintenance",
+                "SCANNING" if stats.get("scan_running") else "READY")
+        print(f"\n  Indexed tracks: {int(stats.get('tracks', 0))}")
+        last_scan = int(stats.get("last_scan", 0))
+        if last_scan:
+            stamp = datetime.fromtimestamp(last_scan, timezone.utc).strftime(
+                "%Y-%m-%d %H:%M:%S UTC")
+            print("  Last scan:      " + stamp)
+        else:
+            print("  Last scan:      none recorded")
+        result = stats.get("last_scan_result", {})
+        if isinstance(result, dict):
+            errors = result.get("errors", [])
+            if isinstance(errors, list) and errors:
+                print(styled("  Source status:  " + "; ".join(
+                    safe_text(item) for item in errors), YELLOW))
+            else:
+                print("  Source status:  available at last scan")
+        cursor = max(0, min(cursor, len(sources) - 1)) if sources else 0
+        print(styled("\n    SOURCE                           TYPE        STATUS", BOLD))
+        for position, source in enumerate(sources):
+            kind = "BASE" if source.get("kind") == "base" else "ADDITIONAL"
+            state = "AVAILABLE" if source.get("available") else "OFFLINE"
+            location = (" / " + safe_text(source.get("location"))) \
+                if source.get("kind") == "additional" else ""
+            line = (f" {position + 1:2}. {clip(source.get('name', ''), 24):24} "
+                    f"{kind:10} {state}{location}")
+            print(styled(clip(line, width()), REVERSE) if position == cursor else
+                  clip(line, width()))
+        if notice:
+            print(styled("\n" + notice, YELLOW))
+        print("\n[↑/↓] move  [A] add location  [D] remove selected  [R] rescan  [X] return")
+        choice = key_input("MarsAmp admin> ")
+        if choice in ("x", "q"):
+            return
+        if choice in ("j", "k", "[", "]"):
+            cursor = _move_cursor(choice, cursor, sources)
+        elif choice == "a":
+            name = input("Short source name (lowercase, no spaces; blank cancels): ").strip()
+            if not name:
+                continue
+            location = input(
+                "Directory below the approved additional-music root (blank cancels): "
+            ).strip()
+            if not location:
+                continue
+            try:
+                result = call("music", "admin_add_source", {
+                    "name": name, "location": location}, token)
+                notice = ("Added " + safe_text(result.get("name")) +
+                          "; catalog scan started.")
+                cursor = max(0, len(sources))
+            except (OSError, RPCError) as exc:
+                notice = "Request rejected: " + safe_text(exc)
+        elif choice == "d" and sources:
+            selected = sources[cursor]
+            name = str(selected.get("name", ""))
+            if selected.get("kind") == "base":
+                notice = "NAS01 and UNR01 are protected base sources."
+                continue
+            if input(f"Type REMOVE {name} to remove this catalog source: ").strip() \
+                    != f"REMOVE {name}":
+                notice = "Source unchanged."
+                continue
+            try:
+                call("music", "admin_remove_source", {"name": name}, token)
+                notice = f"Removed {name}. Files at the read-only location were untouched."
+                cursor = max(0, cursor - 1)
+            except (OSError, RPCError) as exc:
+                notice = "Request rejected: " + safe_text(exc)
+        elif choice == "r":
+            try:
+                response = call("music", "rescan", token=token)
+                notice = ("Catalog scan started." if response.get("started") else
+                          safe_text(response.get("message", "Scan is already running.")))
+            except (OSError, RPCError) as exc:
+                notice = "Request rejected: " + safe_text(exc)
 
 
 def _show_link_invitation(invitation: object, title: str) -> None:
@@ -3692,6 +3785,8 @@ def administration(token: str, identity: dict[str, object]) -> None:
             print("[H]ealth       Check application authority availability")
         if _can(identity, "federation.manage"):
             print("[F]ederation   Name this BBS and manage trusted mail links")
+        if _can(identity, "music.manage"):
+            print("[M]arsAmp      Review and rescan the music catalog")
         print("[R]oles        Explain historical and modern roles")
         print("[X] Exit        Return to the Lobby")
         choice = key_input("Admin> ")
@@ -3710,6 +3805,8 @@ def administration(token: str, identity: dict[str, object]) -> None:
             _admin_health(token)
         elif choice == "f" and _can(identity, "federation.manage"):
             _admin_federation(token)
+        elif choice == "m" and _can(identity, "music.manage"):
+            _admin_marsamp(token)
         elif choice == "r":
             definitions = call("auth", "admin_roles")["roles"]
             content = []
@@ -4796,6 +4893,100 @@ def arcade(token: str, wopr_direct: bool = False) -> None:
                               "help-games.txt")
 
 
+def marsamp(token: str) -> None:
+    """Control the authenticated browser audio sink from an ANSI player."""
+    query = ""
+    cursor = 0
+    notice = ""
+    while True:
+        try:
+            result = call("music", "search", {"query": query, "offset": 0, "limit": 40}, token)
+            tracks = list(result.get("tracks", []))
+            state = call("music", "status", token=token)
+            stats = call("music", "stats", token=token)
+        except (OSError, RPCError) as exc:
+            heading("MARSAMP", "Authenticated ANSI music player")
+            print("MarsAmp is unavailable: " + safe_text(exc))
+            print("The optional music service may not be enabled on this installation.")
+            pause()
+            return
+        cursor = max(0, min(cursor, len(tracks) - 1)) if tracks else 0
+        heading("MARSAMP 0.1", "NAS01 primary / UNR01 secondary",
+                str(state.get("action", "stop")).upper())
+        current = state.get("track")
+        if isinstance(current, dict):
+            artist = safe_text(current.get("artist", ""))
+            title = safe_text(current.get("title", "Untitled"))
+            print(styled(clip((artist + " - " if artist else "") + title, width()),
+                         BOLD, CYAN))
+        else:
+            print(styled("No track selected", DIM))
+        active = str(state.get("action", "stop")) == "play"
+        bars = "".join("▇" if active and (index + int(time.time())) % 3 else "▂"
+                       for index in range(min(24, max(8, width() // 3))))
+        print(styled(bars, GREEN if active else DIM))
+        print(styled(f"{int(stats.get('tracks', 0))} tracks indexed  "
+                     f"Search: {query or '(all)'}", DIM))
+        print()
+        if tracks:
+            page_size = max(4, min(10, shutil.get_terminal_size((80, 24)).lines - 15))
+            start = max(0, min(cursor - page_size // 2, len(tracks) - page_size))
+            for position in range(start, min(len(tracks), start + page_size)):
+                row = tracks[position]
+                artist = safe_text(row.get("artist", "")) or "Unknown artist"
+                label = f"{position + 1:2}. {artist} - {safe_text(row.get('title', 'Untitled'))}"
+                rendered = clip(label, width())
+                print(styled(rendered, REVERSE) if position == cursor else rendered)
+        else:
+            print("No matching tracks.")
+        if notice:
+            print(styled("\n" + clip(notice, width()), YELLOW))
+        controls = ("[Z] previous  [X/Enter] play  [C] pause  [V] stop  [B] next  "
+                    "[S] search  [P] pair audio  [Q/Esc] return")
+        print()
+        for line in textwrap.wrap(controls, width=max(20, width()),
+                                  break_long_words=False, break_on_hyphens=False):
+            print(styled(line, DIM))
+        try:
+            choice = key_input("MarsAmp> ", escape_command="q")
+        except (EOFError, KeyboardInterrupt):
+            return
+        notice = ""
+        try:
+            if choice == "q":
+                return
+            if choice == "j":
+                cursor = min(len(tracks) - 1, cursor + 1) if tracks else 0
+            elif choice == "k":
+                cursor = max(0, cursor - 1)
+            elif choice in ("", "x") and tracks:
+                state = call("music", "play", {"id": int(tracks[cursor]["id"])}, token)
+                notice = "Play command sent to the paired audio sink."
+            elif choice == "z" and tracks:
+                cursor = (cursor - 1) % len(tracks)
+                call("music", "play", {"id": int(tracks[cursor]["id"])}, token)
+            elif choice == "b" and tracks:
+                cursor = (cursor + 1) % len(tracks)
+                call("music", "play", {"id": int(tracks[cursor]["id"])}, token)
+            elif choice == "c":
+                call("music", "pause", token=token)
+            elif choice == "v":
+                call("music", "stop", token=token)
+            elif choice == "s":
+                query = input("Artist, album, or title (blank shows all): ").strip()[:80]
+                cursor = 0
+            elif choice == "p":
+                pairing = call("music", "pair", token=token)
+                heading("MARSAMP AUDIO PAIRING",
+                        "Open once in a PC or phone browser; ticket expires quickly")
+                print("\n" + safe_text(pairing["url"]) + "\n")
+                print("The browser receives an opaque session cookie. Your BBS password,")
+                print("NAS locations, filenames, and internal service addresses are not sent.")
+                pause()
+        except (OSError, RPCError, ValueError) as exc:
+            notice = "Request rejected: " + safe_text(exc)
+
+
 def main_heading(identity: dict[str, object], active_users: int | None,
                  site: dict[str, object]) -> None:
     """Draw the main-menu heading with presence at the upper right."""
@@ -4880,6 +5071,8 @@ def main() -> None:
                 print(" [D] DataNet")
                 print(" [F] Files")
                 print(" [G] Galactic Arcade")
+                if _can(identity, "music.play"):
+                    print(" [R] MarsAmp")
                 print(" [W] Welcome / history")
                 print(" [P] Profile / terminal")
                 if ADMIN_CAPABILITIES.intersection(identity.get("capabilities", [])):
@@ -4902,6 +5095,8 @@ def main() -> None:
                 print("  [D]ataNet      Mars Information Network")
                 print("  [F]iles        Curated file areas")
                 print("  [G]ames        Galactic Arcade")
+                if _can(identity, "music.play"):
+                    print("  [R]adio        MarsAmp NAS music player")
                 print("  [W]elcome      Revival information and Mars history")
                 print("  [P]rofile      Account and terminal utilities")
                 if ADMIN_CAPABILITIES.intersection(identity.get("capabilities", [])):
@@ -4943,6 +5138,9 @@ def main() -> None:
             elif choice == "g":
                 pager.activity("Galactic Arcade")
                 arcade(token)
+            elif choice == "r" and _can(identity, "music.play"):
+                pager.activity("MarsAmp")
+                marsamp(token)
             elif choice == "j":
                 # Discoverable Easter egg: Help hints that an old school
                 # computer still answers to Joshua. Authentication is already
