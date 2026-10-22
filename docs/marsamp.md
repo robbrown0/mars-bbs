@@ -36,7 +36,7 @@ Inside MarsAmp, use:
 - Enter to play the highlighted song
 - `P` to pause and `V` to stop
 - `S` to switch between sequential and shuffle radio play
-- `R` to open the ten curated playlists
+- `A` to show the ten available curated playlists (`R` remains an alias)
 - `F` to find by inferred artist, album, or title
 - `L` to create a browser pairing link
 - `X` or Escape to return

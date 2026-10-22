@@ -1,6 +1,7 @@
 """New recovery verification tests; synthetic data only."""
 import ast
 import importlib
+import io
 import multiprocessing
 import os
 from pathlib import Path
@@ -22,6 +23,45 @@ def slow_rpc_handler(request, _peer):
 
 
 class RecoveryTests(unittest.TestCase):
+    def test_line_editor_does_not_repeat_wrapped_prompt_while_typing(self):
+        from marsv2 import ui
+
+        class FakeInput:
+            @staticmethod
+            def fileno():
+                return 9
+
+            @staticmethod
+            def isatty():
+                return True
+
+        class FakeDecoder:
+            def __init__(self):
+                self.events = iter([
+                    (ui.KEY_CHAR, "t"), (ui.KEY_CHAR, "o"),
+                    (ui.KEY_CHAR, "t"), (ui.KEY_CHAR, "o"),
+                    (ui.KEY_ENTER, ""),
+                ])
+
+            def read(self, _fd):
+                return next(self.events)
+
+        pager = object.__new__(ui.Pager)
+        pager.sock = object()
+        output = io.StringIO()
+        prompt = "Find artist, album, or title (blank shows all): "
+        with patch.object(ui.sys, "stdin", FakeInput()), \
+                patch.object(ui.sys, "stdout", output), \
+                patch.object(ui.termios, "tcgetattr", return_value=[]), \
+                patch.object(ui.termios, "tcsetattr"), \
+                patch.object(ui.tty, "setraw"), \
+                patch.object(ui.select, "select", return_value=([9], [], [])), \
+                patch.object(ui, "KeyDecoder", FakeDecoder), \
+                patch.object(pager, "activity"):
+            self.assertEqual(pager.read_line(prompt), "toto")
+        self.assertEqual(output.getvalue().count(prompt), 1)
+        self.assertIn(prompt + "toto", output.getvalue())
+
     def test_required_password_change_uses_authenticated_uid(self):
         with tempfile.TemporaryDirectory() as directory:
             authority = authd.Authority(directory + "/auth.db")
@@ -165,6 +205,32 @@ class RecoveryTests(unittest.TestCase):
         self.assertEqual(play.call_count, 1)
         self.assertEqual(play.call_args_list[0].args,
                          ("session-token", tracks[1], tracks, "shuffle"))
+
+    def test_marsamp_available_playlists_command_is_visible_and_opens(self):
+        from marsv2 import ui
+
+        def music_call(service, operation, data=None, token=None):
+            self.assertEqual(service, "music")
+            if operation == "search":
+                return {"tracks": []}
+            if operation == "status":
+                return {"action": "stop"}
+            if operation == "stats":
+                return {"tracks": 26075}
+            raise AssertionError(operation)
+
+        with patch.dict(ui._marsamp_view, {}, clear=True), \
+                patch.object(ui, "call", side_effect=music_call), \
+                patch.object(ui, "_marsamp_choose_playlist", return_value=None) as choose, \
+                patch.object(ui, "key_input", side_effect=["a", "x"]), \
+                patch.object(ui, "heading"), patch("builtins.print") as output:
+            ui.marsamp("session-token")
+
+        choose.assert_called_once_with("session-token")
+        rendered = "\n".join(str(call.args[0]) for call in output.call_args_list
+                             if call.args)
+        self.assertIn("[A]", rendered)
+        self.assertIn("available playlists", rendered)
 
     def test_board_authentication_and_write_read(self):
         identity = {"account_id": 1, "userid": "tester", "roles": ["Basic-1"], "capabilities": []}

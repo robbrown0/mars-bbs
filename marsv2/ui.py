@@ -203,26 +203,46 @@ class Pager:
                     if key == KEY_BACKSPACE and cursor:
                         buffer = buffer[:cursor - 1] + buffer[cursor:]
                         cursor -= 1
-                        redraw()
+                        tail = buffer[cursor:]
+                        sys.stdout.write("\b" + tail + " ")
+                        sys.stdout.write("\b" * (len(tail) + 1))
+                        sys.stdout.flush()
                     elif key == KEY_DELETE and cursor < len(buffer):
                         buffer = buffer[:cursor] + buffer[cursor + 1:]
-                        redraw()
+                        tail = buffer[cursor:]
+                        sys.stdout.write(tail + " ")
+                        sys.stdout.write("\b" * (len(tail) + 1))
+                        sys.stdout.flush()
                     elif key == KEY_LEFT:
-                        cursor = max(0, cursor - 1)
-                        redraw()
+                        if cursor:
+                            cursor -= 1
+                            sys.stdout.write("\033[D")
+                            sys.stdout.flush()
                     elif key == KEY_RIGHT:
-                        cursor = min(len(buffer), cursor + 1)
-                        redraw()
+                        if cursor < len(buffer):
+                            cursor += 1
+                            sys.stdout.write("\033[C")
+                            sys.stdout.flush()
                     elif key == KEY_HOME:
+                        movement = cursor
                         cursor = 0
-                        redraw()
+                        if movement:
+                            sys.stdout.write(f"\033[{movement}D")
+                            sys.stdout.flush()
                     elif key == KEY_END:
+                        movement = len(buffer) - cursor
                         cursor = len(buffer)
-                        redraw()
+                        if movement:
+                            sys.stdout.write(f"\033[{movement}C")
+                            sys.stdout.flush()
                     elif key == KEY_CHAR and len(buffer) + len(value) <= 16000:
                         buffer = buffer[:cursor] + value + buffer[cursor:]
                         cursor += len(value)
-                        redraw()
+                        tail = buffer[cursor:]
+                        sys.stdout.write(value + tail)
+                        if tail:
+                            sys.stdout.write(f"\033[{len(tail)}D")
+                        sys.stdout.flush()
                     elif key in (KEY_INVALID, KEY_UP, KEY_DOWN, KEY_PAGE_UP,
                                  KEY_PAGE_DOWN, KEY_ESCAPE, KEY_F2, KEY_F3):
                         # Navigation and unknown escape sequences are commands,
@@ -5077,7 +5097,7 @@ def marsamp(token: str) -> None:
         if notice:
             print(styled("\n" + clip(notice, width()), YELLOW))
         controls = ("[Enter] play  [B] back  [N] next  [P] pause  [V] stop  "
-                    "[S] shuffle  [R] playlists  [F] find  [L] link audio  "
+                    "[S] shuffle  [A] available playlists  [F] find  [L] link audio  "
                     "[X/Esc] return")
         print()
         for line in textwrap.wrap(controls, width=max(20, width()),
@@ -5132,13 +5152,14 @@ def marsamp(token: str) -> None:
                 _marsamp_view.update(query=query, cursor=cursor, mode=mode)
                 notice = "Play mode changed to " + mode.upper() + "."
             elif choice == "f":
-                query = input("Artist, album, or title (blank shows all): ").strip()[:80]
+                print()
+                query = input("Find artist, album, or title (blank shows all): ").strip()[:80]
                 playlist_slug = ""
                 playlist_name = ""
                 cursor = 0
                 _marsamp_view.update(query=query, playlist="", playlist_name="",
                                      cursor=cursor)
-            elif choice == "r":
+            elif choice in ("a", "r"):
                 selected = _marsamp_choose_playlist(token)
                 if selected is not None:
                     playlist_slug = safe_text(selected.get("slug", ""))[:48]
