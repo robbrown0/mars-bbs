@@ -5019,25 +5019,25 @@ def marsamp(token: str) -> None:
             print("No matching tracks.")
         if notice:
             print(styled("\n" + clip(notice, width()), YELLOW))
-        controls = ("[Z] previous  [X/Enter] play  [C] pause  [V] stop  [B] next  "
-                    "[M] sequential/shuffle  [S] search  [P] pair audio  [Q/Esc] return")
+        controls = ("[Enter] play  [Z] previous  [B] next  [C] pause  [V] stop  "
+                    "[M] sequential/shuffle  [S] search  [P] pair audio  [X/Esc] return")
         print()
         for line in textwrap.wrap(controls, width=max(20, width()),
                                   break_long_words=False, break_on_hyphens=False):
             print(styled(line, DIM))
         try:
-            choice = key_input("MarsAmp> ", escape_command="q")
+            choice = key_input("MarsAmp> ", escape_command="x")
         except (EOFError, KeyboardInterrupt):
             return
         notice = ""
         try:
-            if choice == "q":
+            if choice in ("x", "q"):
                 return
             if choice == "j":
                 cursor = min(len(tracks) - 1, cursor + 1) if tracks else 0
             elif choice == "k":
                 cursor = max(0, cursor - 1)
-            elif choice in ("", "x") and tracks:
+            elif choice == "" and tracks:
                 notice = _marsamp_play(token, tracks[cursor], tracks, mode)
             elif choice == "z" and tracks:
                 cursor = (cursor - 1) % len(tracks)

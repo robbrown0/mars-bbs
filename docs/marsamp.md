@@ -33,12 +33,12 @@ When a listener selects a song without an actively polling browser sink, MarsAmp
 Inside MarsAmp, use:
 
 - arrow keys to move, or `Z` and `B` for previous and next
-- Enter or `X` to play
+- Enter to play the highlighted song
 - `C` to pause and `V` to stop
 - `M` to switch between sequential and shuffle radio play
 - `S` to search by inferred artist, album, or title
 - `P` to create a browser pairing URL
-- Escape or `Q` to return
+- `X` or Escape to return
 
 Leaving MarsAmp for another BBS area preserves the current search, highlighted song, list position, and sequential/shuffle choice for the rest of that SSH login session. Returning to MarsAmp restores that view and follows the currently playing song if the browser advanced while the listener was elsewhere. The paired browser continues playing in the background and automatically advances through the terminal-selected result list. Sequential mode wraps at the end; shuffle mode chooses another song from that list.
 

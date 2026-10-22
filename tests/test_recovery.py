@@ -148,7 +148,7 @@ class RecoveryTests(unittest.TestCase):
                          "mode": "shuffle", "track_id": 2}, clear=True), \
                 patch.object(ui, "call", side_effect=music_call), \
                 patch.object(ui, "_marsamp_play", return_value="playing") as play, \
-                patch.object(ui, "key_input", side_effect=["x", "q"]), \
+                patch.object(ui, "key_input", side_effect=["", "x"]), \
                 patch.object(ui, "heading"), patch("builtins.print"):
             ui.marsamp("session-token")
 
