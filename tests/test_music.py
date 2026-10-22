@@ -144,6 +144,9 @@ class MusicTests(unittest.TestCase):
         self.assertIn("Your browser blocked automatic audio", page)
         self.assertIn("classList.add('attention')", page)
         self.assertIn("/api/advance", page)
+        self.assertIn("/api/previous", page)
+        self.assertIn('id="previous"', page)
+        self.assertIn('id="next"', page)
         self.assertIn("audio.addEventListener('ended'", page)
 
     def test_playback_list_advances_and_wraps(self) -> None:
@@ -307,6 +310,18 @@ class MusicTests(unittest.TestCase):
                 connection.close()
                 self.assertEqual(response.status, 200)
                 self.assertEqual(json.loads(payload)["track_id"], queue[1])
+
+                connection = http.client.HTTPConnection(
+                    "127.0.0.1", server.server_port, timeout=3)
+                connection.request("POST", "/marsamp/api/previous", headers={
+                    "Cookie": "marsamp_session=" + browser,
+                    "Origin": "https://bbs.example.test",
+                })
+                response = connection.getresponse()
+                payload = response.read()
+                connection.close()
+                self.assertEqual(response.status, 200)
+                self.assertEqual(json.loads(payload)["track_id"], queue[0])
 
                 connection = http.client.HTTPConnection(
                     "127.0.0.1", server.server_port, timeout=3)
