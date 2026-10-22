@@ -853,6 +853,8 @@ small{{display:block;color:#a6afc8;margin-top:12px;line-height:1.4}}
 <div class="meter" id="meter"></div><audio id="audio" preload="metadata" autoplay playsinline></audio>
 <div><button id="enable" type="button">&#9654; PLAY SELECTED SONG</button><button id="pause">Pause</button>
 <button id="stop">Stop</button></div>
+<div><button id="previous" type="button">&#9664; BACK</button>
+<button id="next" type="button">FORWARD &#9654;</button></div>
 <small>Keep this page open while controlling MarsAmp through SSH. No NAS path or BBS
 credential is stored in this page.</small></main><script>
 const BASE={base}; const audio=document.getElementById('audio'); let enabled=false, serial=-1;
@@ -869,15 +871,25 @@ try{{await audio.play();audioReady()}}catch(e){{needsTap()}}}}
 enable.onclick=beginPlayback;
 document.getElementById('pause').onclick=()=>audio.pause();
 document.getElementById('stop').onclick=()=>{{audio.pause();audio.currentTime=0}};
-async function poll(){{try{{let r=await fetch(BASE+'/api/state',{{cache:'no-store'}});
-if(r.status===401){{document.getElementById('track').textContent='BBS session ended. Pair again.';return}}
-let s=await r.json(); if(s.track)document.getElementById('track').textContent=
+function sessionEnded(){{audio.pause();audio.removeAttribute('src');audio.load();
+document.getElementById('track').textContent='BBS session ended. Pair again.';
+hint.textContent='Playback authorization ended.';bars(false)}}
+async function applyState(s){{if(s.track)document.getElementById('track').textContent=
 (s.track.artist?s.track.artist+' - ':'')+s.track.title;
 mode.textContent='PLAY MODE: '+String(s.mode||'sequential').toUpperCase();
 if(s.serial!==serial){{serial=s.serial;if(s.action==='play'&&s.stream){{
 audio.src=s.stream;await beginPlayback();}}else if(s.action==='pause')audio.pause();
 else if(s.action==='stop'){{audio.pause();audio.removeAttribute('src');audio.load();}}}}
-bars(!audio.paused);setTimeout(poll,750)}}catch(e){{setTimeout(poll,2000)}}}} poll();
+bars(!audio.paused)}}
+async function navigate(path,label){{hint.textContent=label;
+try{{let r=await fetch(BASE+path,{{method:'POST',credentials:'same-origin'}});
+if(r.status===401){{sessionEnded();return}}if(!r.ok)throw new Error('request failed');
+await applyState(await r.json())}}catch(e){{hint.textContent='Unable to change songs. Check the connection.';}}}}
+document.getElementById('previous').onclick=()=>navigate('/api/previous','Loading the previous song...');
+document.getElementById('next').onclick=()=>navigate('/api/advance','Loading the next song...');
+async function poll(){{try{{let r=await fetch(BASE+'/api/state',{{cache:'no-store'}});
+if(r.status===401){{sessionEnded();return}}await applyState(await r.json());
+setTimeout(poll,750)}}catch(e){{setTimeout(poll,2000)}}}} poll();
 audio.addEventListener('ended',async()=>{{hint.textContent='Loading the next song...';
 try{{let r=await fetch(BASE+'/api/advance',{{method:'POST',credentials:'same-origin'}});
 if(!r.ok)hint.textContent='Unable to advance. Return to the BBS and pair again.';
@@ -993,7 +1005,7 @@ class MusicHTTP(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:  # noqa: N802 - stdlib handler contract
         path = self._path()
-        if path != "/api/advance":
+        if path not in ("/api/advance", "/api/previous"):
             self._headers(404, "text/plain; charset=utf-8")
             return
         if self.headers.get("Origin") != self.music.public_origin:
@@ -1001,7 +1013,8 @@ class MusicHTTP(BaseHTTPRequestHandler):
             return
         try:
             ident = self._identity()
-            self._json(self.music.advance(int(ident["account_id"])))
+            move = self.music.previous if path == "/api/previous" else self.music.advance
+            self._json(move(int(ident["account_id"])))
         except RPCError as exc:
             self._json({"error": str(exc)}, 401)
 
