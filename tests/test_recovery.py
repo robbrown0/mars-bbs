@@ -146,6 +146,10 @@ class RecoveryTests(unittest.TestCase):
             if operation == "mode":
                 self.assertEqual(data, {"mode": "sequential"})
                 return {"mode": "sequential"}
+            if operation == "previous":
+                return {"action": "play", "track_id": 1, "track": tracks[0]}
+            if operation == "advance":
+                return {"action": "play", "track_id": 2, "track": tracks[1]}
             raise AssertionError(operation)
 
         with patch.dict(ui._marsamp_view,
@@ -158,12 +162,8 @@ class RecoveryTests(unittest.TestCase):
                 patch.object(ui, "heading"), patch("builtins.print"):
             ui.marsamp("session-token")
 
-        self.assertEqual(play.call_count, 3)
+        self.assertEqual(play.call_count, 1)
         self.assertEqual(play.call_args_list[0].args,
-                         ("session-token", tracks[1], tracks, "shuffle"))
-        self.assertEqual(play.call_args_list[1].args,
-                         ("session-token", tracks[0], tracks, "shuffle"))
-        self.assertEqual(play.call_args_list[2].args,
                          ("session-token", tracks[1], tracks, "shuffle"))
 
     def test_board_authentication_and_write_read(self):

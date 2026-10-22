@@ -689,6 +689,8 @@
         "unr01=/music/unr01",
         "--extra-root",
         "/music/extra",
+        "--playlists-file",
+        "/opt/mars-v2/assets/music-playlists.json",
         "--public-url",
         "${MARSAMP_PUBLIC_URL:-https://mars.ee.msstate.edu.pl/marsamp}",
         "--scan-on-start"

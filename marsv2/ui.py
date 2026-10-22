@@ -71,7 +71,8 @@ BOARD_BODY_MAX = 16384
 # with imported history. The mail service remains the final size authority.
 MAIL_HISTORY_MAX = 6000
 _marsamp_view: dict[str, object] = {
-    "query": "", "cursor": 0, "mode": "sequential", "track_id": 0,
+    "query": "", "playlist": "", "playlist_name": "", "cursor": 0,
+    "mode": "sequential", "track_id": 0,
 }
 
 
@@ -4950,9 +4951,52 @@ def _marsamp_play(token: str, track: dict[str, object],
     return "Play command sent to the paired audio sink."
 
 
+def _marsamp_choose_playlist(token: str) -> dict[str, object] | None:
+    playlists = list(call("music", "playlists", token=token).get("playlists", []))
+    if not playlists:
+        return None
+    cursor = 0
+    while True:
+        heading("MARSAMP PLAYLISTS", "Curated from highly rated songs available on the NAS")
+        for position, playlist in enumerate(playlists):
+            label = (f"{position + 1:2}. {safe_text(playlist.get('name', 'Playlist'))} "
+                     f"({int(playlist.get('tracks', 0))} songs)")
+            rendered = clip(label, width())
+            print(styled(rendered, REVERSE) if position == cursor else rendered)
+        selected = playlists[cursor]
+        print("\n" + clip(safe_text(selected.get("description", "")), width()))
+        print(styled("\n[Enter] open  [X/Esc] return", DIM))
+        choice = key_input("Playlists> ", escape_command="x")
+        if choice in ("x", "q"):
+            return None
+        if choice == "j":
+            cursor = min(len(playlists) - 1, cursor + 1)
+        elif choice == "k":
+            cursor = max(0, cursor - 1)
+        elif choice == "":
+            if int(selected.get("tracks", 0)):
+                return selected
+
+
+def _marsamp_transport(token: str, operation: str) -> dict[str, object]:
+    state = call("music", operation, token=token)
+    pair_url = state.get("pair_url")
+    if pair_url:
+        track = state.get("track")
+        label = ""
+        if isinstance(track, dict):
+            artist = safe_text(track.get("artist", ""))
+            label = (artist + " - " if artist else "") + safe_text(
+                track.get("title", "Untitled"))
+        _marsamp_pairing_screen(pair_url, label)
+    return state
+
+
 def marsamp(token: str) -> None:
     """Control the authenticated browser audio sink from an ANSI player."""
     query = safe_text(_marsamp_view.get("query", ""))[:80]
+    playlist_slug = safe_text(_marsamp_view.get("playlist", ""))[:48]
+    playlist_name = safe_text(_marsamp_view.get("playlist_name", ""))[:80]
     try:
         cursor = max(0, int(_marsamp_view.get("cursor", 0)))
     except (TypeError, ValueError):
@@ -4965,7 +5009,17 @@ def marsamp(token: str) -> None:
     notice = ""
     while True:
         try:
-            result = call("music", "search", {"query": query, "offset": 0, "limit": 40}, token)
+            if playlist_slug:
+                result = call("music", "playlist_tracks", {
+                    "slug": playlist_slug, "offset": 0, "limit": 40,
+                }, token)
+                playlist = result.get("playlist")
+                if isinstance(playlist, dict):
+                    playlist_name = safe_text(playlist.get("name", playlist_name))[:80]
+            else:
+                result = call("music", "search", {
+                    "query": query, "offset": 0, "limit": 40,
+                }, token)
             tracks = list(result.get("tracks", []))
             state = call("music", "status", token=token)
             stats = call("music", "stats", token=token)
@@ -4988,7 +5042,8 @@ def marsamp(token: str) -> None:
                     break
         entering = False
         cursor = max(0, min(cursor, len(tracks) - 1)) if tracks else 0
-        _marsamp_view.update(query=query, cursor=cursor, mode=mode,
+        _marsamp_view.update(query=query, playlist=playlist_slug,
+                             playlist_name=playlist_name, cursor=cursor, mode=mode,
                              track_id=current_track)
         heading("MARSAMP 0.1", "NAS01 primary / UNR01 secondary",
                 str(state.get("action", "stop")).upper())
@@ -5003,8 +5058,10 @@ def marsamp(token: str) -> None:
         bars = "".join("▇" if active and (index + int(time.time())) % 3 else "▂"
                        for index in range(min(24, max(8, width() // 3))))
         print(styled(bars, GREEN if active else DIM))
+        source_label = ("Playlist: " + playlist_name if playlist_slug
+                        else "Search: " + (query or "(all)"))
         print(styled(f"{int(stats.get('tracks', 0))} tracks indexed  "
-                     f"Search: {query or '(all)'}  Mode: {mode.upper()}", DIM))
+                     f"{source_label}  Mode: {mode.upper()}", DIM))
         print()
         if tracks:
             page_size = max(4, min(10, shutil.get_terminal_size((80, 24)).lines - 15))
@@ -5020,7 +5077,8 @@ def marsamp(token: str) -> None:
         if notice:
             print(styled("\n" + clip(notice, width()), YELLOW))
         controls = ("[Enter] play  [B] back  [N] next  [P] pause  [V] stop  "
-                    "[S] shuffle  [F] find  [L] link audio  [X/Esc] return")
+                    "[S] shuffle  [R] playlists  [F] find  [L] link audio  "
+                    "[X/Esc] return")
         print()
         for line in textwrap.wrap(controls, width=max(20, width()),
                                   break_long_words=False, break_on_hyphens=False):
@@ -5039,14 +5097,31 @@ def marsamp(token: str) -> None:
                 cursor = max(0, cursor - 1)
             elif choice == "" and tracks:
                 notice = _marsamp_play(token, tracks[cursor], tracks, mode)
-            elif choice in ("b", "z") and tracks:
-                cursor = (cursor - 1) % len(tracks)
-                _marsamp_view.update(query=query, cursor=cursor, mode=mode)
-                notice = _marsamp_play(token, tracks[cursor], tracks, mode)
-            elif choice == "n" and tracks:
-                cursor = (cursor + 1) % len(tracks)
-                _marsamp_view.update(query=query, cursor=cursor, mode=mode)
-                notice = _marsamp_play(token, tracks[cursor], tracks, mode)
+            elif choice in ("b", "z"):
+                if str(state.get("action", "stop")) == "play":
+                    moved = _marsamp_transport(token, "previous")
+                    moved_id = int(moved.get("track_id", 0) or 0)
+                    for position, row in enumerate(tracks):
+                        if int(row["id"]) == moved_id:
+                            cursor = position
+                            break
+                    notice = "Playing the previous song."
+                elif tracks:
+                    cursor = (cursor - 1) % len(tracks)
+                    notice = _marsamp_play(token, tracks[cursor], tracks, mode)
+            elif choice == "n":
+                if str(state.get("action", "stop")) == "play":
+                    moved = _marsamp_transport(token, "advance")
+                    moved_id = int(moved.get("track_id", 0) or 0)
+                    for position, row in enumerate(tracks):
+                        if int(row["id"]) == moved_id:
+                            cursor = position
+                            break
+                    notice = ("Shuffled to another song." if mode == "shuffle"
+                              else "Playing the next song.")
+                elif tracks:
+                    cursor = (cursor + 1) % len(tracks)
+                    notice = _marsamp_play(token, tracks[cursor], tracks, mode)
             elif choice in ("p", "c"):
                 call("music", "pause", token=token)
             elif choice == "v":
@@ -5058,8 +5133,19 @@ def marsamp(token: str) -> None:
                 notice = "Play mode changed to " + mode.upper() + "."
             elif choice == "f":
                 query = input("Artist, album, or title (blank shows all): ").strip()[:80]
+                playlist_slug = ""
+                playlist_name = ""
                 cursor = 0
-                _marsamp_view.update(query=query, cursor=cursor)
+                _marsamp_view.update(query=query, playlist="", playlist_name="",
+                                     cursor=cursor)
+            elif choice == "r":
+                selected = _marsamp_choose_playlist(token)
+                if selected is not None:
+                    playlist_slug = safe_text(selected.get("slug", ""))[:48]
+                    playlist_name = safe_text(selected.get("name", ""))[:80]
+                    cursor = 0
+                    _marsamp_view.update(playlist=playlist_slug,
+                                         playlist_name=playlist_name, cursor=cursor)
             elif choice == "l":
                 pairing = call("music", "pair", token=token)
                 _marsamp_pairing_screen(pairing["url"])
