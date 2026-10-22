@@ -141,6 +141,11 @@ class RecoveryTests(unittest.TestCase):
                 return {"action": "play", "track": tracks[1]}
             if operation == "stats":
                 return {"tracks": 2}
+            if operation == "pause":
+                return {"action": "pause"}
+            if operation == "mode":
+                self.assertEqual(data, {"mode": "sequential"})
+                return {"mode": "sequential"}
             raise AssertionError(operation)
 
         with patch.dict(ui._marsamp_view,
@@ -148,11 +153,18 @@ class RecoveryTests(unittest.TestCase):
                          "mode": "shuffle", "track_id": 2}, clear=True), \
                 patch.object(ui, "call", side_effect=music_call), \
                 patch.object(ui, "_marsamp_play", return_value="playing") as play, \
-                patch.object(ui, "key_input", side_effect=["", "x"]), \
+                patch.object(ui, "key_input",
+                             side_effect=["", "b", "n", "p", "s", "x"]), \
                 patch.object(ui, "heading"), patch("builtins.print"):
             ui.marsamp("session-token")
 
-        play.assert_called_once_with("session-token", tracks[1], tracks, "shuffle")
+        self.assertEqual(play.call_count, 3)
+        self.assertEqual(play.call_args_list[0].args,
+                         ("session-token", tracks[1], tracks, "shuffle"))
+        self.assertEqual(play.call_args_list[1].args,
+                         ("session-token", tracks[0], tracks, "shuffle"))
+        self.assertEqual(play.call_args_list[2].args,
+                         ("session-token", tracks[1], tracks, "shuffle"))
 
     def test_board_authentication_and_write_read(self):
         identity = {"account_id": 1, "userid": "tester", "roles": ["Basic-1"], "capabilities": []}

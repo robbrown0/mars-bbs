@@ -28,16 +28,16 @@ Route the path in `MARSAMP_PUBLIC_URL` to the loopback listener at `MARSAMP_PORT
 
 A Sysop grants the historical-style `Music` role to listeners. Only accounts with `music.play` can search, pair, control playback, or read an audio stream. Pairing creates a single-use URL that expires after 90 seconds. Redeeming it creates an opaque, secure, HTTP-only browser cookie bound to the active BBS account and session. Ending the SSH BBS session also ends browser authorization. Catalog responses and URLs contain opaque numeric track IDs rather than NAS paths.
 
-When a listener selects a song without an actively polling browser sink, MarsAmp selects the track and immediately presents a boxed OSC 8 **OPEN MARSAMP IN BROWSER** button. Opening it pairs the browser with the already selected song. The player attempts playback immediately where browser policy permits it. If iPhone, iPad, or another browser blocks audible autoplay, the page highlights a large **PLAY SELECTED SONG** button that must be tapped once. The plain URL and the explicit `P` pairing command remain available as fallbacks. SSH provides no standard or safe way for a remote application to force a client browser to open.
+When a listener selects a song without an actively polling browser sink, MarsAmp selects the track and immediately presents a boxed OSC 8 **OPEN MARSAMP IN BROWSER** button. Opening it pairs the browser with the already selected song. The player attempts playback immediately where browser policy permits it. If iPhone, iPad, or another browser blocks audible autoplay, the page highlights a large **PLAY SELECTED SONG** button that must be tapped once. The plain URL and the explicit `L` link-audio command remain available as fallbacks. SSH provides no standard or safe way for a remote application to force a client browser to open.
 
 Inside MarsAmp, use:
 
-- arrow keys to move, or `Z` and `B` for previous and next
+- arrow keys to move, `B` for the previous song, or `N` for the next song
 - Enter to play the highlighted song
-- `C` to pause and `V` to stop
-- `M` to switch between sequential and shuffle radio play
-- `S` to search by inferred artist, album, or title
-- `P` to create a browser pairing URL
+- `P` to pause and `V` to stop
+- `S` to switch between sequential and shuffle radio play
+- `F` to find by inferred artist, album, or title
+- `L` to create a browser pairing link
 - `X` or Escape to return
 
 Leaving MarsAmp for another BBS area preserves the current search, highlighted song, list position, and sequential/shuffle choice for the rest of that SSH login session. Returning to MarsAmp restores that view and follows the currently playing song if the browser advanced while the listener was elsewhere. The paired browser continues playing in the background and automatically advances through the terminal-selected result list. Sequential mode wraps at the end; shuffle mode chooses another song from that list.

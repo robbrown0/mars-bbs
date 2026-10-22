@@ -5019,8 +5019,8 @@ def marsamp(token: str) -> None:
             print("No matching tracks.")
         if notice:
             print(styled("\n" + clip(notice, width()), YELLOW))
-        controls = ("[Enter] play  [Z] previous  [B] next  [C] pause  [V] stop  "
-                    "[M] sequential/shuffle  [S] search  [P] pair audio  [X/Esc] return")
+        controls = ("[Enter] play  [B] back  [N] next  [P] pause  [V] stop  "
+                    "[S] shuffle  [F] find  [L] link audio  [X/Esc] return")
         print()
         for line in textwrap.wrap(controls, width=max(20, width()),
                                   break_long_words=False, break_on_hyphens=False):
@@ -5039,28 +5039,28 @@ def marsamp(token: str) -> None:
                 cursor = max(0, cursor - 1)
             elif choice == "" and tracks:
                 notice = _marsamp_play(token, tracks[cursor], tracks, mode)
-            elif choice == "z" and tracks:
+            elif choice in ("b", "z") and tracks:
                 cursor = (cursor - 1) % len(tracks)
                 _marsamp_view.update(query=query, cursor=cursor, mode=mode)
                 notice = _marsamp_play(token, tracks[cursor], tracks, mode)
-            elif choice == "b" and tracks:
+            elif choice == "n" and tracks:
                 cursor = (cursor + 1) % len(tracks)
                 _marsamp_view.update(query=query, cursor=cursor, mode=mode)
                 notice = _marsamp_play(token, tracks[cursor], tracks, mode)
-            elif choice == "c":
+            elif choice in ("p", "c"):
                 call("music", "pause", token=token)
             elif choice == "v":
                 call("music", "stop", token=token)
-            elif choice == "m":
+            elif choice in ("s", "m"):
                 mode = "shuffle" if mode == "sequential" else "sequential"
                 call("music", "mode", {"mode": mode}, token)
                 _marsamp_view.update(query=query, cursor=cursor, mode=mode)
                 notice = "Play mode changed to " + mode.upper() + "."
-            elif choice == "s":
+            elif choice == "f":
                 query = input("Artist, album, or title (blank shows all): ").strip()[:80]
                 cursor = 0
                 _marsamp_view.update(query=query, cursor=cursor)
-            elif choice == "p":
+            elif choice == "l":
                 pairing = call("music", "pair", token=token)
                 _marsamp_pairing_screen(pairing["url"])
         except (OSError, RPCError, ValueError) as exc:
