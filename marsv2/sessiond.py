@@ -13,6 +13,9 @@ from .validate import integer, text
 MAX_SESSIONS = 48
 MAX_SESSIONS_PER_ACCOUNT = 3
 SESSION_LEASE_SECONDS = 90.0
+MARSAMP_LEASE_SECONDS = 10 * 60.0
+MARSAMP_SESSION_SECONDS = 8 * 60 * 60.0
+MUSIC_SERVICE_UID = 21012
 
 
 class Sessions:
@@ -22,8 +25,11 @@ class Sessions:
 
     def _prune(self) -> None:
         now = time.monotonic()
-        expired = [token for token, session in self.sessions.items()
-                   if float(session["expires"]) < now]
+        expired = [
+            token for token, session in self.sessions.items()
+            if (float(session["expires"]) < now or
+                float(session.get("absolute_expires", now + 1)) < now)
+        ]
         for token in expired:
             del self.sessions[token]
 
@@ -78,10 +84,17 @@ class Sessions:
                 if not response["ok"]:
                     raise RPCError("invalid ticket")
                 ident = dict(response["data"])
-                if len(self.sessions) >= MAX_SESSIONS:
+                ssh_sessions = sum(
+                    1 for item in self.sessions.values()
+                    if item.get("session_type", "SSH") == "SSH"
+                )
+                if ssh_sessions >= MAX_SESSIONS:
                     raise RPCError("session capacity reached")
-                current = sum(1 for item in self.sessions.values()
-                              if item["account_id"] == ident["account_id"])
+                current = sum(
+                    1 for item in self.sessions.values()
+                    if (item["account_id"] == ident["account_id"] and
+                        item.get("session_type", "SSH") == "SSH")
+                )
                 if current >= MAX_SESSIONS_PER_ACCOUNT:
                     raise RPCError("account session limit reached")
                 token = secrets.token_urlsafe(48)
@@ -89,6 +102,7 @@ class Sessions:
                 ident.update({"created": now,
                               "last_activity": now,
                               "activity_mode": "Lobby",
+                              "session_type": "SSH",
                               "expires": now + SESSION_LEASE_SECONDS,
                               "supervisor_pid": peer[0],
                               "remote_ip": remote_ip,
@@ -100,6 +114,48 @@ class Sessions:
                 result["last_login"] = ident.get("last_login", 0)
                 result["token"] = token
                 return result
+            if op == "create_music_browser":
+                if data or peer[1] != MUSIC_SERVICE_UID:
+                    raise RPCError("permission denied")
+                parent_token = text(req.get("token"), "token", 128, 32)
+                parent = self._refresh(parent_token)
+                if str(parent.get("session_type", "SSH")) != "SSH":
+                    raise RPCError("invalid parent session")
+                if "music.play" not in set(parent.get("capabilities", [])):
+                    raise RPCError("music access denied")
+                # MarsAmp has one browser sink per account. Re-pairing revokes
+                # the older browser without consuming an SSH session slot.
+                replaced = [
+                    value for value, item in self.sessions.items()
+                    if (item.get("session_type") == "MarsAmp" and
+                        item["account_id"] == parent["account_id"])
+                ]
+                for value in replaced:
+                    self.sessions.pop(value, None)
+                music_sessions = sum(
+                    1 for item in self.sessions.values()
+                    if item.get("session_type") == "MarsAmp"
+                )
+                if music_sessions >= MAX_SESSIONS:
+                    raise RPCError("session capacity reached")
+                token = secrets.token_urlsafe(48)
+                now = time.monotonic()
+                delegated = dict(parent)
+                delegated.pop("supervisor_pid", None)
+                delegated.pop("remote_ip", None)
+                delegated.update({
+                    "created": now,
+                    "last_activity": now,
+                    "activity_mode": "Browser audio",
+                    "session_type": "MarsAmp",
+                    "expires": now + MARSAMP_LEASE_SECONDS,
+                    "absolute_expires": now + MARSAMP_SESSION_SECONDS,
+                    "session_id": secrets.token_hex(8),
+                    "parent_session_id": parent["session_id"],
+                })
+                self.sessions[token] = delegated
+                return {"token": token, "session_id": delegated["session_id"],
+                        "expires_seconds": int(MARSAMP_SESSION_SECONDS)}
             if op in ("validate", "touch", "end"):
                 token = text(req.get("token"), "token", 128, 32)
                 session = self._refresh(token)
@@ -112,7 +168,15 @@ class Sessions:
                     del self.sessions[token]
                     return {"ended": True}
                 if op == "touch":
-                    session["expires"] = time.monotonic() + SESSION_LEASE_SECONDS
+                    now = time.monotonic()
+                    if session.get("session_type") == "MarsAmp":
+                        session["expires"] = min(
+                            now + MARSAMP_LEASE_SECONDS,
+                            float(session["absolute_expires"]),
+                        )
+                        session["last_activity"] = now
+                    else:
+                        session["expires"] = now + SESSION_LEASE_SECONDS
                 return {key: session[key] for key in
                         ("account_id", "userid", "display_name", "runtime_uid", "is_admin",
                          "roles", "capabilities", "password_change_required")}
@@ -129,7 +193,10 @@ class Sessions:
             if op == "online":
                 token = text(req.get("token"), "token", 128, 32)
                 self._refresh(token)
-                users = sorted({str(item["userid"]) for item in self.sessions.values()})
+                users = sorted({
+                    str(item["userid"]) for item in self.sessions.values()
+                    if item.get("session_type", "SSH") == "SSH"
+                })
                 return {"users": users}
             if op == "online_details":
                 token = text(req.get("token"), "token", 128, 32)
@@ -137,6 +204,8 @@ class Sessions:
                 now = time.monotonic()
                 grouped: dict[str, dict[str, float | int | str]] = {}
                 for session in self.sessions.values():
+                    if session.get("session_type", "SSH") != "SSH":
+                        continue
                     name = str(session["userid"])
                     created = float(session["created"])
                     last_activity = float(session.get("last_activity", created))
@@ -174,6 +243,7 @@ class Sessions:
                     return {"sessions": [
                         {"session_id": item["session_id"], "userid": item["userid"],
                          "display_name": item["display_name"],
+                         "session_type": item.get("session_type", "SSH"),
                          "connected_seconds": max(0, int(now - float(item["created"]))),
                          "idle_seconds": max(0, int(now - float(item["last_activity"]))),
                          "activity": str(item.get("activity_mode", "Online")),
@@ -205,7 +275,8 @@ class Sessions:
                 audit = request(self.auth_socket, "service_audit", {
                     "actor_id": actor["account_id"], "actor_user": actor["userid"],
                     "action": "terminate", "target": str(target["userid"]),
-                    "detail": "session_id=" + target_id,
+                    "detail": ("session_id=" + target_id + " type=" +
+                               str(target.get("session_type", "SSH"))),
                 })
                 if not audit["ok"]:
                     raise RPCError("audit service unavailable")

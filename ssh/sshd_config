@@ -33,7 +33,7 @@ MaxAuthTries 3
 MaxStartups 10:30:30
 LoginGraceTime 30
 ClientAliveInterval 60
-ClientAliveCountMax 2
+ClientAliveCountMax 30
 Compression no
 ForceCommand /opt/mars-v2/bin/bbs-login
 LogLevel VERBOSE

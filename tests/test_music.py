@@ -74,6 +74,12 @@ class MusicTests(unittest.TestCase):
     def request(op: str, data: dict[str, object] | None = None) -> dict[str, object]:
         return {"op": op, "data": data or {}, "token": "s" * 48}
 
+    def redeem(self, url: str) -> str:
+        ticket = url.rsplit("/", 1)[1]
+        with patch("marsv2.musicd.request", return_value={
+                "ok": True, "data": {"token": "m" * 48}}):
+            return self.music.redeem_pair(ticket)
+
     def test_catalog_hides_paths_and_enforces_capability(self) -> None:
         with patch("marsv2.musicd.validate", return_value=IDENTITY):
             result = self.music.handle(self.request("search", {"query": "Track",
@@ -98,13 +104,19 @@ class MusicTests(unittest.TestCase):
             "https://bbs.example.test/marsamp/pair/"))
         self.assertNotIn(self.temporary.name, str(paired))
         ticket = str(paired["url"]).rsplit("/", 1)[1]
-        browser = self.music.redeem_pair(ticket)
+        with patch("marsv2.musicd.request", return_value={
+                "ok": True, "data": {"token": "m" * 48}}) as delegate:
+            browser = self.music.redeem_pair(ticket)
+        delegate.assert_called_once_with(
+            "/unused/session.sock", "create_music_browser", {}, "s" * 48)
         with self.assertRaisesRegex(RPCError, "invalid or expired"):
             self.music.redeem_pair(ticket)
         with patch("marsv2.musicd.request",
-                   return_value={"ok": True, "data": IDENTITY}):
+                   return_value={"ok": True, "data": IDENTITY}) as touch:
             identity = self.music.browser_identity(browser)
         self.assertEqual(identity["account_id"], 7)
+        touch.assert_called_once_with(
+            "/unused/session.sock", "touch", token="m" * 48)
 
     def test_play_offers_pairing_until_browser_is_actively_polling(self) -> None:
         with patch("marsv2.musicd.validate", return_value=IDENTITY):
@@ -115,7 +127,7 @@ class MusicTests(unittest.TestCase):
                 self.request("play", {"id": track_id}), (1, 29901, 29901))
         self.assertEqual(first["action"], "play")
         self.assertIn("pair_url", first)
-        browser = self.music.redeem_pair(str(first["pair_url"]).rsplit("/", 1)[1])
+        browser = self.redeem(str(first["pair_url"]))
         with patch("marsv2.musicd.request",
                    return_value={"ok": True, "data": IDENTITY}):
             self.music.browser_identity(browser)
@@ -241,7 +253,7 @@ class MusicTests(unittest.TestCase):
             pair = self.music.handle(self.request("pair"), (1, 29901, 29901))
         track_id = int(rows[0]["id"])
         ticket = str(pair["url"]).rsplit("/", 1)[1]
-        browser = self.music.redeem_pair(ticket)
+        browser = self.redeem(str(pair["url"]))
         MusicHTTP.music = self.music
         server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), MusicHTTP)
         thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -276,7 +288,7 @@ class MusicTests(unittest.TestCase):
                 "id": queue[0], "queue": queue, "mode": "sequential",
             }), (1, 29901, 29901))
             pair = self.music.handle(self.request("pair"), (1, 29901, 29901))
-        browser = self.music.redeem_pair(str(pair["url"]).rsplit("/", 1)[1])
+        browser = self.redeem(str(pair["url"]))
         MusicHTTP.music = self.music
         server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), MusicHTTP)
         thread = threading.Thread(target=server.serve_forever, daemon=True)

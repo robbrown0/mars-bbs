@@ -3416,16 +3416,20 @@ def _admin_sessions(token: str) -> None:
             show_error(exc)
             pause()
             return
-        rows = _admin_matches(all_rows, query, ("userid", "display_name", "session_id"))
+        rows = _admin_matches(
+            all_rows, query, ("userid", "display_name", "session_id", "session_type"))
         cursor = max(0, min(cursor, len(rows) - 1)) if rows else 0
         heading("SESSION MANAGEMENT", "Select a live session; current session is protected",
                 f"{len(rows)}/{len(all_rows)}")
-        print(styled(f"{'':2} {'ID':16} {'USERID':12} {'CONNECTED':>10} {'IDLE':>10}", BOLD))
+        print(styled(
+            f"{'':2} {'ID':16} {'USERID':12} {'TYPE':8} {'CONNECTED':>10} {'IDLE':>10}",
+            BOLD))
         start, end = page_window(rows, cursor)
         for position in range(start, end):
             row = rows[position]
             suffix = " *" if row["current"] else ""
             line = (f"{position + 1:2}. {row['session_id']:16} {clip(row['userid'], 12):12} "
+                    f"{clip(row.get('session_type', 'SSH'), 8):8} "
                     f"{elapsed(int(row['connected_seconds'])):>10} "
                     f"{elapsed(int(row['idle_seconds'])):>10}{suffix}")
             print(styled(line, REVERSE) if position == cursor else line)
@@ -3446,19 +3450,23 @@ def _admin_sessions(token: str) -> None:
         elif choice == "t" and rows:
             current = rows[cursor]
             session_id = str(current["session_id"])
-            confirm = input(f"Type KICK to terminate {current['userid']}: ").strip()
+            label = safe_text(current.get("session_type", "SSH"))
+            confirm = input(
+                f"Type KICK to terminate {current['userid']} {label} session: ").strip()
             if confirm != "KICK":
                 notice = "Session unchanged."
                 continue
             try:
                 result = call("session", "admin_end", {"session_id": session_id}, token)
-                notice = f"Ended the selected {result['userid']} session."
+                notice = f"Ended the selected {result['userid']} {label} session."
             except RPCError as exc:
                 notice = "Request rejected: " + safe_text(exc)
         elif choice == "t":
             notice = "Select a session first."
         elif choice == "f":
-            query = input("Filter userid, display name, or session ID (blank shows all): ").strip()
+            query = input(
+                "Filter userid, type, display name, or session ID (blank shows all): "
+            ).strip()
             cursor = 0
 
 

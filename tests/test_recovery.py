@@ -9,7 +9,9 @@ import tempfile
 import time
 import unittest
 from unittest.mock import patch
-from marsv2 import rpc, authd, boardd, maild, games, migrate, sodium, informationd, ui
+from marsv2 import (
+    rpc, authd, boardd, maild, games, migrate, sodium, informationd, sessiond, ui,
+)
 
 
 def req(op, **data):
@@ -23,6 +25,86 @@ def slow_rpc_handler(request, _peer):
 
 
 class RecoveryTests(unittest.TestCase):
+    def test_ssh_mobile_background_grace_is_not_a_two_probe_timeout(self):
+        config = Path("ssh/sshd_config").read_text(encoding="utf-8")
+        self.assertIn("ClientAliveInterval 60", config)
+        self.assertIn("ClientAliveCountMax 30", config)
+
+    def test_marsamp_session_survives_parent_ssh_and_admin_can_end_it(self):
+        authority = sessiond.Sessions("/unused/auth.sock")
+        now = time.monotonic()
+        parent_token = "p" * 48
+        admin_token = "a" * 48
+        common = {
+            "display_name": "Listener", "runtime_uid": 30007,
+            "is_admin": False, "roles": ["Music"],
+            "capabilities": ["music.play"], "password_change_required": False,
+            "created": now, "last_activity": now, "expires": now + 90,
+            "session_type": "SSH", "activity_mode": "MarsAmp",
+        }
+        authority.sessions[parent_token] = dict(
+            common, account_id=7, userid="listener", session_id="1" * 16)
+        authority.sessions[admin_token] = dict(
+            common, account_id=1, userid="sysop", display_name="Sysop",
+            runtime_uid=30001, is_admin=True,
+            capabilities=["session.manage"], session_id="2" * 16)
+        authority._refresh = lambda token: authority.sessions[token]  # type: ignore[method-assign]
+
+        with self.assertRaisesRegex(rpc.RPCError, "permission denied"):
+            authority.handle({"op": "create_music_browser", "data": {},
+                              "token": parent_token}, (1, 30007, 30007))
+        delegated = authority.handle(
+            {"op": "create_music_browser", "data": {}, "token": parent_token},
+            (1, sessiond.MUSIC_SERVICE_UID, sessiond.MUSIC_SERVICE_UID),
+        )
+        music_token = str(delegated["token"])
+        self.assertEqual(authority.sessions[music_token]["session_type"], "MarsAmp")
+        replacement = authority.handle(
+            {"op": "create_music_browser", "data": {}, "token": parent_token},
+            (1, sessiond.MUSIC_SERVICE_UID, sessiond.MUSIC_SERVICE_UID),
+        )
+        self.assertNotIn(music_token, authority.sessions)
+        music_token = str(replacement["token"])
+
+        authority.handle({"op": "end", "data": {}, "token": parent_token},
+                         (1, 30007, 30007))
+        self.assertIn(music_token, authority.sessions)
+        listed = authority.handle(
+            {"op": "admin_sessions", "data": {}, "token": admin_token},
+            (1, 30001, 30001),
+        )["sessions"]
+        browser = next(row for row in listed if row["session_type"] == "MarsAmp")
+        self.assertEqual(browser["userid"], "listener")
+        online = authority.handle(
+            {"op": "online", "data": {}, "token": admin_token},
+            (1, 30001, 30001),
+        )["users"]
+        self.assertEqual(online, ["sysop"])
+        with patch.object(sessiond, "request", return_value={
+                "ok": True, "data": {"recorded": True}}):
+            ended = authority.handle(
+                {"op": "admin_end", "data": {
+                    "session_id": browser["session_id"]}, "token": admin_token},
+                (1, 30001, 30001),
+            )
+        self.assertEqual(ended, {"ended": True, "userid": "listener"})
+        self.assertNotIn(music_token, authority.sessions)
+
+    def test_admin_session_screen_labels_marsamp_browser_sessions(self):
+        rows = [{
+            "session_id": "1" * 16, "userid": "listener",
+            "display_name": "Listener", "session_type": "MarsAmp",
+            "connected_seconds": 80, "idle_seconds": 1, "current": False,
+        }]
+        with patch.object(ui, "call", return_value={"sessions": rows}), \
+                patch.object(ui, "key_input", return_value="x"), \
+                patch.object(ui, "heading"), patch("builtins.print") as output:
+            ui._admin_sessions("admin-token")
+        rendered = "\n".join(
+            str(call.args[0]) for call in output.call_args_list if call.args)
+        self.assertIn("TYPE", rendered)
+        self.assertIn("MarsAmp", rendered)
+
     def test_line_editor_does_not_repeat_wrapped_prompt_while_typing(self):
         from marsv2 import ui
 

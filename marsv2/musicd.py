@@ -539,9 +539,19 @@ class Music:
             ticket = self.pair_tickets.pop(digest, None)
             if ticket is None:
                 raise RPCError("invalid or expired pairing ticket")
+        response = request(self.session_socket, "create_music_browser", {},
+                           str(ticket["bbs_token"]))
+        if not response["ok"]:
+            raise RPCError(str(response.get("data", {}).get(
+                "error", "browser authorization unavailable")))
+        delegated_token = response.get("data", {}).get("token")
+        if not isinstance(delegated_token, str):
+            raise RPCError("browser authorization unavailable")
+        with self.lock:
             browser = secrets.token_urlsafe(48)
             browser_hash = hashlib.sha256(browser.encode("ascii")).hexdigest()
             ticket = dict(ticket)
+            ticket["bbs_token"] = delegated_token
             ticket["expires"] = time.monotonic() + BROWSER_SECONDS
             ticket["last_seen"] = 0.0
             self.browser_sessions[browser_hash] = ticket
