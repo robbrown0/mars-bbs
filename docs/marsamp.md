@@ -28,6 +28,8 @@ Route the path in `MARSAMP_PUBLIC_URL` to the loopback listener at `MARSAMP_PORT
 
 A Sysop grants the historical-style `Music` role to listeners. Only accounts with `music.play` can search, pair, control playback, or read an audio stream. Pairing creates a single-use URL that expires after 90 seconds. Redeeming it creates an opaque, secure, HTTP-only browser cookie bound to the active BBS account and session. Ending the SSH BBS session also ends browser authorization. Catalog responses and URLs contain opaque numeric track IDs rather than NAS paths.
 
+The pairing screen emits an OSC 8 **OPEN MARSAMP IN BROWSER** hyperlink for terminal clients that support clickable links and also prints the plain URL as a fallback. SSH provides no standard or safe way for a remote application to force a client browser to open, so the listener must tap or click the link once.
+
 Inside MarsAmp, use:
 
 - arrow keys to move, or `Z` and `B` for previous and next
