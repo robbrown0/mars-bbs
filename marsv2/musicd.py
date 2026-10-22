@@ -248,22 +248,33 @@ class Music:
                 except OSError:
                     errors.append(f"{source}: scan interrupted")
                     continue
-                with self.lock, self.db:
+                with self.lock:
                     # An administrator may remove an additional source while
                     # this thread is walking it. Recheck under the same lock
                     # used by removal so a completed removal cannot be made
                     # available again by a stale scan result.
                     if self._all_sources().get(source) != root_text:
                         continue
-                    self.db.execute("UPDATE tracks SET available=0 WHERE source=?", (source,))
-                    self.db.executemany(
-                        "INSERT INTO tracks(source,relative_path,title,artist,album,extension,"
-                        "mime_type,size,modified_ns,available) VALUES(?,?,?,?,?,?,?,?,?,1) "
-                        "ON CONFLICT(source,relative_path) DO UPDATE SET title=excluded.title,"
-                        "artist=excluded.artist,album=excluded.album,extension=excluded.extension,"
-                        "mime_type=excluded.mime_type,size=excluded.size,"
-                        "modified_ns=excluded.modified_ns,available=1",
-                        found)
+                    # db.py uses SQLite autocommit mode. Without an explicit
+                    # transaction, executemany commits every track separately;
+                    # a large NAS catalog can then hold this lock for minutes
+                    # and make health and playback requests time out.
+                    self.db.execute("BEGIN IMMEDIATE")
+                    try:
+                        self.db.execute(
+                            "UPDATE tracks SET available=0 WHERE source=?", (source,))
+                        self.db.executemany(
+                            "INSERT INTO tracks(source,relative_path,title,artist,album,extension,"
+                            "mime_type,size,modified_ns,available) VALUES(?,?,?,?,?,?,?,?,?,1) "
+                            "ON CONFLICT(source,relative_path) DO UPDATE SET title=excluded.title,"
+                            "artist=excluded.artist,album=excluded.album,extension=excluded.extension,"
+                            "mime_type=excluded.mime_type,size=excluded.size,"
+                            "modified_ns=excluded.modified_ns,available=1",
+                            found)
+                        self.db.execute("COMMIT")
+                    except BaseException:
+                        self.db.execute("ROLLBACK")
+                        raise
                 found_total += len(found)
             with self.lock:
                 self.last_scan = int(time.time())
