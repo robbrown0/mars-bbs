@@ -2,8 +2,8 @@
   {
     "service": "gateway",
     "container": "mars-v2ssh-gateway",
-    "image": "sha256:16a5865ad3d6b9c4559de42d8b54e7eda89bb9802b9ba38c2dcfb5cf83b41ca2",
-    "tag": "mars-hotel-v2-gateway:player-layout-toggle-20261023",
+    "image": "sha256:2a8d1a99c978304f4f8afd82e27aa041bab9b7a214f5a5f9b69b13ca2740f488",
+    "tag": "mars-hotel-v2-gateway:marsamp-premium-playlists-20261023",
     "user": "root",
     "running": true,
     "read_only": true
@@ -74,8 +74,8 @@
   {
     "service": "music",
     "container": "mars-v2final-music",
-    "image": "sha256:43513c43a86e599d628c7776a75fd55411caa16b4f12e4dc895d0a0e73f14fc4",
-    "tag": "mars-hotel-v2-service:player-layout-toggle-20261023",
+    "image": "sha256:986ebd04c4a89022bbbea1e88b9713eddf562bd70a5a337ba300563b10ecc5cf",
+    "tag": "mars-hotel-v2-service:marsamp-premium-playlists-20261023",
     "user": "21012:21012",
     "running": true,
     "read_only": true
