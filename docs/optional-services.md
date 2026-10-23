@@ -7,3 +7,10 @@ compose.external-irc.yaml restores the maintenance-only external nickname adapte
 The public IRC Center uses PUBLIC_IRC_HOST, PUBLIC_IRC_PORT, PUBLIC_IRC_SERVER_NAME and PUBLIC_IRC_CHANNEL. Defaults preserve the Mars destination. Its internal TLS bridge and external-adapter TLS fixture have passed recovery tests. The native-chat external bridge implementation is recovered and its local capability/presence/relay tests pass; enabling that separate topology requires the documented chatd --bridge-* and external_irc --chat-socket options plus a runtime bridge capability.
 
 Collected content remains attributed to its upstream sources. Provider availability, rate limits, credentials and content licenses remain operator responsibilities. Do not describe unavailable market or authenticated external-network features as operational.
+
+
+The recovered deployment's market credential was restored on 2026-10-23 using
+an owner-only file on persistent appdata storage, mounted read-only into the
+information service. Provider authentication and a fresh four-benchmark board
+completed successfully without provider warnings. The credential remains
+outside the repository; the former RAM-backed root path is not used.

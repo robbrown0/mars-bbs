@@ -11,6 +11,7 @@ import struct
 import sys
 import termios
 import tty
+from collections.abc import Callable
 
 from .client import socket_path
 
@@ -55,7 +56,9 @@ def _size() -> tuple[int, int]:
         return 80, 24
 
 
-def play(game: str, token: str) -> int:
+def play(game: str, token: str, *, notification_socket: socket.socket | None = None,
+         on_notification: Callable[[], object] | None = None,
+         paint_notification: Callable[[], None] | None = None) -> int:
     """Attach this authenticated terminal to a process owned by doord."""
     sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     sock.connect(socket_path("door").replace("door.sock", "play.sock"))
@@ -89,7 +92,14 @@ def play(game: str, token: str) -> int:
                 columns, rows = _size()
                 send_frame(sock, b"R", struct.pack("!HH", rows, columns))
                 resized = False
-            ready, _, _ = select.select([fd, sock], [], [])
+            sources = [fd, sock]
+            if notification_socket is not None and on_notification is not None:
+                sources.append(notification_socket)
+            if paint_notification is not None:
+                paint_notification()
+            ready, _, _ = select.select(sources, [], [])
+            if notification_socket is not None and notification_socket in ready:
+                on_notification()
             if fd in ready:
                 data = os.read(fd, 4096)
                 if not data:
@@ -100,6 +110,8 @@ def play(game: str, token: str) -> int:
                 kind, payload = recv_frame(sock)
                 if kind == b"O":
                     os.write(sys.stdout.fileno(), payload)
+                    if paint_notification is not None:
+                        paint_notification()
                 elif kind == b"E":
                     return struct.unpack("!i", payload)[0] if len(payload) == 4 else 1
                 elif kind == b"X":

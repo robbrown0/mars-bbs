@@ -217,6 +217,8 @@ class Pager:
         self.last_activity_report = 0.0
         self.pending: dict[str, dict[str, object]] = {}
         self.available = True
+        self.notification = ""
+        self.notification_until = 0.0
         self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_SEQPACKET)
         self.sock.connect(socket_path("chat"))
         chat_send(self.sock, token, "join", {"mode": "pager"})
@@ -259,7 +261,30 @@ class Pager:
             self.pending.pop(page_id, None)
         elif kind == "pager_status":
             self.available = bool(event.get("available", True))
+        if kind == "monitor" and isinstance(event.get("online"), bool):
+            who = "@" + safe_text(event.get("userid", "member"))
+            label = "ONLINE" if event["online"] else "OFFLINE"
+            action = "signed in" if event["online"] else "signed out"
+            self.present_notification(f"{label}: {who} has {action}.")
         return event
+
+    def present_notification(self, message: str) -> None:
+        self.notification = safe_text(message)
+        self.notification_until = time.monotonic() + 12.0
+        sys.stdout.write("\a")
+        self.draw_notification()
+
+    def draw_notification(self) -> None:
+        """Overlay a banner without moving the user's cursor or consuming input."""
+        if not getattr(self, "notification", ""):
+            return
+        if time.monotonic() > getattr(self, "notification_until", 0.0):
+            return
+        if sys.stdout.isatty() and os.environ.get("TERM") != "dumb":
+            columns = max(1, width() - 1)
+            line = clip(" " + self.notification, columns).ljust(columns)
+            sys.stdout.write("\0337\033[1;1H" + styled(line, BOLD, REVERSE, YELLOW) + "\0338")
+            sys.stdout.flush()
 
     def close(self) -> None:
         try:
@@ -290,10 +315,10 @@ class Pager:
         try:
             tty.setraw(fd)
             while True:
-                ready, _, _ = select.select([fd, self.sock], [], [])
+                ready, _, _ = _notice_select([fd, self.sock], [], [])
                 if self.sock in ready:
                     event = self.receive()
-                    if event.get("kind") != "pager_ready":
+                    if event.get("kind") not in ("pager_ready", "monitor"):
                         notice = str(event.get("message", "Pager event"))
                         sys.stdout.write("\a\r\033[K" + safe_text(notice) + "\r\n")
                         redraw()
@@ -379,11 +404,11 @@ class Pager:
         try:
             tty.setraw(fd)
             while True:
-                ready, _, _ = select.select([fd, self.sock], [], [], 0.35 if _mini_visible else None)
+                ready, _, _ = _notice_select([fd, self.sock], [], [], 0.35 if _mini_visible else None)
                 _mini_tick()
                 if self.sock in ready:
                     event = self.receive()
-                    if event.get("kind") != "pager_ready":
+                    if event.get("kind") not in ("pager_ready", "monitor"):
                         notice = str(event.get("message", "Pager event"))
                         sys.stdout.write("\a\r\033[K" + notice + "\r\n" + prompt)
                         sys.stdout.flush()
@@ -418,6 +443,22 @@ class Pager:
                     return value.lower()
         finally:
             termios.tcsetattr(fd, termios.TCSADRAIN, old)
+
+
+def _notice_select(readers, writers, exceptional, timeout=None):
+    """Multiplex global alerts in every foreground terminal input loop."""
+    pager = _active_pager
+    added = pager is not None and pager.sock not in readers
+    sources = list(readers) + ([pager.sock] if added else [])
+    if pager is not None:
+        pager.draw_notification()
+    ready, writable, errors = select.select(sources, writers, exceptional, timeout)
+    if added and pager.sock in ready:
+        event = pager.receive()
+        if event.get("kind") not in ("pager_ready", "monitor"):
+            pager.present_notification("PAGER: " + safe_text(event.get("message", "event")))
+        ready.remove(pager.sock)
+    return ready, writable, errors
 
 
 def input(prompt: str = "") -> str:
@@ -720,10 +761,10 @@ def choose_board(boards_list: list[dict[str, object]], current_id: int) -> int |
             sources: list[object] = [fd]
             if pager is not None:
                 sources.append(pager.sock)
-            ready, _, _ = select.select(sources, [], [])
+            ready, _, _ = _notice_select(sources, [], [])
             if pager is not None and pager.sock in ready:
                 event = pager.receive()
-                if event.get("kind") != "pager_ready":
+                if event.get("kind") not in ("pager_ready", "monitor"):
                     status = "Pager: " + safe_text(event.get("message", "event"))
                 continue
             key, value = decoder.read(fd)
@@ -1032,7 +1073,7 @@ def mail_editor(recipient: str, subject: str, initial: str = "",
             sources: list[object] = [fd]
             if pager is not None:
                 sources.append(pager.sock)
-            ready, _, _ = select.select(sources, [], [], 0.25)
+            ready, _, _ = _notice_select(sources, [], [], 0.25)
             size = shutil.get_terminal_size((80, 24))
             packed_size = (size.columns << 16) | size.lines
             if packed_size != last_size:
@@ -1040,7 +1081,7 @@ def mail_editor(recipient: str, subject: str, initial: str = "",
                 continue
             if pager is not None and pager.sock in ready:
                 event = pager.receive()
-                if event.get("kind") != "pager_ready":
+                if event.get("kind") not in ("pager_ready", "monitor"):
                     status = "Pager: " + safe_text(event.get("message", "event"))
                 continue
             if fd not in ready:
@@ -1200,8 +1241,28 @@ def _recipient_directory(token: str) -> list[dict[str, object]]:
     raise RPCError("recipient directory is too large")
 
 
+def _monitor_directory() -> list[dict[str, object]]:
+    users: list[dict[str, object]] = []
+    offset = 0
+    own = _active_pager.userid.casefold() if _active_pager is not None else ""
+    while len(users) < 10_000:
+        result = call("auth", "member_directory", {"offset": offset})
+        for user in result.get("users", []):
+            if (isinstance(user, dict) and isinstance(user.get("userid"), str)
+                    and isinstance(user.get("display_name"), str)
+                    and user["userid"].casefold() != own):
+                users.append(user)
+        following = result.get("next_offset")
+        if following is None:
+            return users
+        if isinstance(following, bool) or not isinstance(following, int) or following <= offset:
+            raise RPCError("invalid member directory")
+        offset = following
+    raise RPCError("member directory is too large")
+
+
 def _draw_recipient_picker(users: list[dict[str, object]], query: EditorBuffer,
-                           cursor: int, status: str) -> tuple[list[dict[str, object]], int]:
+                           cursor: int, status: str, purpose: str = "mail") -> tuple[list[dict[str, object]], int]:
     size = shutil.get_terminal_size((80, 24))
     columns = max(20, min(120, size.columns))
     rows = max(12, size.lines)
@@ -1213,9 +1274,11 @@ def _draw_recipient_picker(users: list[dict[str, object]], query: EditorBuffer,
     own_user = _active_pager.userid.casefold() if _active_pager is not None else ""
 
     sys.stdout.write("\033[?25l\033[2J\033[H")
-    sys.stdout.write(styled(clip("POST OFFICE - CHOOSE RECIPIENT", columns),
+    sys.stdout.write(styled(clip("MONITOR - CHOOSE MEMBER" if purpose == "monitor" else
+                                "POST OFFICE - CHOOSE RECIPIENT", columns),
                             BOLD, CYAN) + "\r\n")
-    sys.stdout.write(styled(clip("Type a local userid or user@linked-bbs.", columns),
+    sys.stdout.write(styled(clip("Choose a member for sign-in alerts throughout the BBS." if purpose == "monitor" else
+                                "Type a local userid or user@linked-bbs.", columns),
                             DIM) + "\r\n")
     sys.stdout.write(("Search: " + safe_text(query.text))[:columns] + "\r\n")
     sys.stdout.write(styled("-" * columns, DIM) + "\r\n")
@@ -1246,11 +1309,12 @@ def _draw_recipient_picker(users: list[dict[str, object]], query: EditorBuffer,
     return matches, cursor
 
 
-def choose_mail_recipient(token: str, default: str = "") -> str | None:
+def choose_mail_recipient(token: str, default: str = "", *, purpose: str = "mail") -> str | None:
     """Select a recipient using immediate filtering and terminal navigation."""
-    users = _recipient_directory(token)
+    users = _monitor_directory() if purpose == "monitor" else _recipient_directory(token)
     if not users:
-        raise RPCError("No mail recipients are available.")
+        raise RPCError("No other members are available." if purpose == "monitor" else
+                       "No mail recipients are available.")
     query = EditorBuffer(default, 45)
     decoder = KeyDecoder()
     cursor = 0
@@ -1261,15 +1325,15 @@ def choose_mail_recipient(token: str, default: str = "") -> str | None:
     try:
         tty.setraw(fd)
         while True:
-            matches, cursor = _draw_recipient_picker(users, query, cursor, status)
+            matches, cursor = _draw_recipient_picker(users, query, cursor, status, purpose)
             status = ""
             sources: list[object] = [fd]
             if pager is not None:
                 sources.append(pager.sock)
-            ready, _, _ = select.select(sources, [], [])
+            ready, _, _ = _notice_select(sources, [], [])
             if pager is not None and pager.sock in ready:
                 event = pager.receive()
-                if event.get("kind") != "pager_ready":
+                if event.get("kind") not in ("pager_ready", "monitor"):
                     status = "Pager: " + safe_text(event.get("message", "event"))
                 continue
             key, value = decoder.read(fd)
@@ -1280,7 +1344,7 @@ def choose_mail_recipient(token: str, default: str = "") -> str | None:
             if key in (KEY_EOF, KEY_INTERRUPT, KEY_ESCAPE):
                 return None
             if key == KEY_ENTER:
-                if "@" in query.text:
+                if "@" in query.text and purpose == "mail":
                     try:
                         return str(call("mail", "resolve_recipient", {
                             "recipient": query.text}, token)["userid"])
@@ -2145,7 +2209,7 @@ def native_chat(token: str, initial_room: str = "lobby") -> None:
         tty.setraw(fd)
         running = True
         while running:
-            ready, _, _ = select.select([fd, sock], [], [])
+            ready, _, _ = _notice_select([fd, sock], [], [])
             if sock in ready:
                 raw = sock.recv(MAX_PACKET + 1)
                 if not raw:
@@ -2275,7 +2339,7 @@ def embedded_irc(token: str, network: str = "local") -> None:
         tty.setraw(fd)
         running = True
         while running:
-            ready, _, _ = select.select([fd, sock], [], [])
+            ready, _, _ = _notice_select([fd, sock], [], [])
             if sock in ready:
                 raw = sock.recv(MAX_PACKET + 1)
                 if not raw:
@@ -2431,7 +2495,7 @@ def direct_talk(pager: Pager, peer: str, page_id: str | None = None,
         tty.setraw(fd)
         running = True
         while running:
-            ready, _, _ = select.select([fd, pager.sock], [], [])
+            ready, _, _ = _notice_select([fd, pager.sock], [], [])
             if pager.sock in ready:
                 event = pager.receive()
                 kind = str(event.get("kind", ""))
@@ -2804,10 +2868,13 @@ def talk(token: str, pager: Pager) -> None:
             except EOFError:
                 return
         elif choice == "m":
-            name = choose_mail_recipient(token)
-            if name:
-                pager.send("monitor", {"userid": name})
-                notice = f"Monitoring {name} for this session."
+            try:
+                name = choose_mail_recipient(token, purpose="monitor")
+                if name:
+                    pager.send("monitor", {"userid": name})
+                    notice = f"Monitoring @{name}; sign-in alerts follow you throughout the BBS this session."
+            except (OSError, RPCError) as exc:
+                notice = "Monitor: " + safe_text(exc)
         elif choice == "d":
             try:
                 profile = call("auth", "profile")
@@ -3702,7 +3769,7 @@ def _admin_marsamp(token: str) -> None:
             else:
                 print("  Source status:  available at last scan")
         cursor = max(0, min(cursor, len(sources) - 1)) if sources else 0
-        print(styled("\n    SOURCE                           TYPE        STATUS", BOLD))
+        print(styled("\n" + f"{'':5}{'SOURCE':24} {'TYPE':10} STATUS", BOLD))
         for position, source in enumerate(sources):
             kind = "BASE" if source.get("kind") == "base" else "ADDITIONAL"
             state = "AVAILABLE" if source.get("available") else "OFFLINE"
@@ -4973,7 +5040,10 @@ def _arcade_door(token: str, game: str) -> None:
     """Hand the current PTY to an authenticated external game process."""
     clear()
     try:
-        play_door(game, token)
+        pager = _active_pager
+        play_door(game, token, notification_socket=pager.sock if pager else None,
+                  on_notification=pager.receive if pager else None,
+                  paint_notification=pager.draw_notification if pager else None)
     except (OSError, EOFError, DoorError) as exc:
         clear()
         show_error(exc)

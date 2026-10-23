@@ -46,6 +46,23 @@ Validated on 2026-10-23 for the compact Lobby player and saved playback:
   health passed and unauthenticated browser audio returned HTTP 401
 - Gitleaks found no secrets in the staged change or existing Git history
 
-Market data remains unavailable because the deployed information service has no
-market API credential. The historical local credential path was an empty
-placeholder directory. No API key is included in this repository.
+The market credential was subsequently restored from an operator-supplied key
+stored on persistent appdata and mounted read-only. Provider authentication and
+a fresh four-benchmark board passed without provider warnings. No API key is
+included in this repository.
+
+
+Validated on 2026-10-23 for Monitor alerts and administration spacing:
+
+- 53 unit tests and all 14 recovered model suites passed
+- Monitor uses the local member directory and its own heading; the current
+  user and linked-BBS mail hints are excluded
+- a monitor event was delivered through the same foreground multiplexer used
+  by Chat and IRC, without returning unrelated socket readiness to the caller
+- real PTY tests preserved a partially typed line and external-game input
+  across a sign-in banner; the alert never became application input
+- SOURCE, TYPE and STATUS headings align exactly with source-row values
+
+Monitor subscriptions are per SSH login, as before. Banners use the terminal's
+first row with cursor save/restore and a terminal bell. Foreground loops repaint
+the notice for 12 seconds; screens retain their own input handling.

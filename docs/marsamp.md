@@ -85,3 +85,7 @@ and music-service restarts. After a restart the selection is restored paused;
 `P` resumes it and offers browser pairing if needed. Browser credentials are
 not restored. A newly paired browser starts the saved song from its beginning;
 pausing and resuming in an already open browser preserves its position.
+
+
+The administration source table uses the same field widths for headings and
+rows, so SOURCE, TYPE and STATUS align with each source's values.
