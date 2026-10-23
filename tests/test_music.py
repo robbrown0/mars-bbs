@@ -8,9 +8,12 @@ import tempfile
 import threading
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
-from marsv2.musicd import Music, MusicHTTP, _display_title, _player_html
+from marsv2.musicd import (
+    Music, MusicHTTP, _display_album, _display_artist, _display_title, _player_html,
+)
 from marsv2.rpc import RPCError
 
 
@@ -108,6 +111,7 @@ class MusicTests(unittest.TestCase):
 
     def test_track_numbers_are_hidden_only_in_presented_titles(self) -> None:
         self.assertEqual(_display_title("06 Hot For Teacher"), "Hot For Teacher")
+        self.assertEqual(_display_title("02_-_Sweet_Child_O'_Mine"), "Sweet Child O' Mine")
         self.assertEqual(_display_title("1-06 - Panama"), "Panama")
         self.assertEqual(_display_title("16_dressed_up"), "dressed up")
         self.assertEqual(_display_title("1999"), "1999")
@@ -131,6 +135,90 @@ class MusicTests(unittest.TestCase):
             "SELECT title FROM tracks WHERE id=?", (presented["id"],)
         ).fetchone()[0]
         self.assertEqual(stored, "06 Track One")
+
+    def test_path_fallback_metadata_is_cleaned_consistently(self) -> None:
+        self.assertEqual(_display_title("- _Sweet_Child_O'_Mine"), "Sweet Child O' Mine")
+        self.assertEqual(_display_artist("Guns_N'_Roses"), "Guns N' Roses")
+        self.assertEqual(_display_album("Greatest_Hits_[Explicit]"), "Greatest Hits")
+
+    def test_canonical_metadata_is_separate_and_invalidates_when_file_changes(self) -> None:
+        raw = self.music.db.execute(
+            "SELECT id,title,modified_ns FROM tracks WHERE title='Track One'"
+        ).fetchone()
+        with self.music.db:
+            self.music.db.execute(
+                "INSERT INTO track_metadata(track_id,title,artist,album,album_artist,"
+                "track_number,disc_number,year,source_type,confidence,file_modified_ns,"
+                "updated_at,updated_by) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (raw["id"], "Canonical Song", "Canonical Artist", "Canonical Album", "",
+                 "1", "1", "1984", "embedded", 90, raw["modified_ns"], 1, "test"),
+            )
+        found = self.music._search("Canonical Song", 0, 10)
+        self.assertEqual(found["total"], 1)
+        self.assertEqual(found["tracks"][0]["artist"], "Canonical Artist")
+        stored = self.music.db.execute(
+            "SELECT title FROM tracks WHERE id=?", (raw["id"],)
+        ).fetchone()[0]
+        self.assertEqual(stored, "Track One")
+        with self.music.db:
+            self.music.db.execute(
+                "UPDATE tracks SET modified_ns=modified_ns+1 WHERE id=?", (raw["id"],)
+            )
+        self.assertEqual(self.music._search("Canonical Song", 0, 10)["total"], 0)
+        self.assertEqual(self.music._search("Track One", 0, 10)["total"], 1)
+
+    def test_tag_refresh_accepts_real_names_and_rejects_placeholders(self) -> None:
+        tagged = SimpleNamespace(
+            title="Tagged Song", artist="Tagged Artist", album="Tagged Album",
+            albumartist="Tagged Artist", track=1, disc=1, year="1984",
+        )
+        with patch("marsv2.musicd.TinyTag.get", return_value=tagged):
+            result = self.music.refresh_metadata()
+        self.assertEqual(result["updated"], 3)
+        self.assertEqual(self.music._search("Tagged Song", 0, 10)["total"], 3)
+        with self.music.db:
+            self.music.db.execute("DELETE FROM track_metadata")
+        placeholder = SimpleNamespace(
+            title="(real_artist)-real_song", artist="artist", album="title",
+            albumartist="", track=1, disc=1, year="",
+        )
+        with patch("marsv2.musicd.TinyTag.get", return_value=placeholder):
+            result = self.music.refresh_metadata()
+        self.assertEqual(result["updated"], 0)
+        self.assertEqual(self.music._search("real_song", 0, 10)["total"], 0)
+
+    def test_admin_reviewed_metadata_is_confirmed_and_audited(self) -> None:
+        manager = dict(IDENTITY, capabilities=["music.play", "music.manage"])
+        track_id = int(self.music._search("Track One", 0, 10)["tracks"][0]["id"])
+        with patch("marsv2.musicd.validate", return_value=manager):
+            saved = self.music.handle(self.request("admin_metadata_update", {
+                "track_id": track_id, "title": "Reviewed Title",
+                "artist": "Reviewed Artist", "album": "Reviewed Album",
+                "confirm": "SAVE",
+            }), (1, 29901, 29901))
+        self.assertEqual(saved["canonical"]["title"], "Reviewed Title")
+        self.assertEqual(saved["canonical"]["metadata_source"], "reviewed")
+        audit = self.music.db.execute(
+            "SELECT action,changed_by FROM track_metadata_audit WHERE track_id=?",
+            (track_id,),
+        ).fetchone()
+        self.assertEqual(tuple(audit), ("review", "listener"))
+        with patch("marsv2.musicd.validate", return_value=manager):
+            reset = self.music.handle(self.request("admin_metadata_reset", {
+                "track_id": track_id, "confirm": "RESET",
+            }), (1, 29901, 29901))
+        self.assertEqual(reset["canonical"]["title"], "Track One")
+        self.assertEqual(reset["canonical"]["metadata_source"], "path")
+        self.assertEqual(self.music.db.execute(
+            "SELECT group_concat(action,',') FROM track_metadata_audit WHERE track_id=? "
+            "ORDER BY id", (track_id,),
+        ).fetchone()[0], "review,reset")
+        with patch("marsv2.musicd.validate", return_value=manager):
+            with self.assertRaisesRegex(RPCError, "confirmation"):
+                self.music.handle(self.request("admin_metadata_update", {
+                    "track_id": track_id, "title": "Bad", "artist": "Bad",
+                    "album": "", "confirm": "NO",
+                }), (1, 29901, 29901))
 
     def test_playlist_match_uses_the_song_part_of_verbose_filenames(self) -> None:
         wanted = {"artists": ["Metallica"], "title": "Master of Puppets", "album": ""}
@@ -390,6 +478,32 @@ class MusicTests(unittest.TestCase):
             with self.assertRaisesRegex(RPCError, "music access denied"):
                 self.music.handle(self.request("admin_artwork_status", {
                     "track_id": track_id}), (1, 29901, 29901))
+
+    def test_canonical_names_retain_legacy_confirmed_artwork_identity(self) -> None:
+        row = self.music.db.execute(
+            "SELECT id,modified_ns FROM tracks WHERE title='Track One'"
+        ).fetchone()
+        legacy_key = Music._artwork_key({"artist": "Artist One", "album": "Album One"})
+        image = b"\x89PNG\r\n\x1a\nlegacy-cover"
+        with self.music.db:
+            self.music.db.execute(
+                "INSERT INTO track_metadata(track_id,title,artist,album,album_artist,"
+                "track_number,disc_number,year,source_type,confidence,file_modified_ns,"
+                "updated_at,updated_by) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (row["id"], "Canonical Track", "Canonical Artist", "Canonical Album", "",
+                 "", "", "", "embedded", 90, row["modified_ns"], 1, "test"),
+            )
+            self.music.db.execute(
+                "INSERT INTO album_artwork(artwork_key,artist,album,provider,external_id,"
+                "mime_type,image,image_sha256,created_at,created_by) "
+                "VALUES(?,?,?,?,?,?,?,?,?,?)",
+                (legacy_key, "Artist One", "Album One", "test", "legacy", "image/png",
+                 image, "a" * 64, 1, "test"),
+            )
+        self.assertEqual(self.music.artwork(int(row["id"])),
+                         ("image/png", image, "confirmed"))
+        removed = self.music.admin_artwork_remove(int(row["id"]))
+        self.assertTrue(removed["removed"])
 
     def test_browser_range_stream_uses_opaque_track_id(self) -> None:
         with patch("marsv2.musicd.validate", return_value=IDENTITY):
