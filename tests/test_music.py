@@ -49,14 +49,20 @@ class MusicTests(unittest.TestCase):
         (recycle / "deleted.mp3").write_bytes(b"deleted")
         os.symlink(self.nas01 / "Artist One", self.nas01 / "linked-artist")
         self.playlists_file = root / "playlists.json"
-        self.playlists_file.write_text(json.dumps([{
-            "slug": "test-favorites", "name": "Test Favorites",
-            "description": "Only verified fixture tracks.",
-            "tracks": [
-                {"artist": "Artist One", "title": "Track Two"},
-                {"artist": "Artist One", "title": "Track One"},
-            ],
-        }]), encoding="utf-8")
+        self.playlists_file.write_text(json.dumps([
+            {
+                "slug": "test-favorites", "name": "Test Favorites",
+                "description": "Only verified fixture tracks.",
+                "tracks": [
+                    {"artist": "Artist One", "title": "Track Two"},
+                    {"artist": "Artist One", "title": "Track One"},
+                ],
+            },
+            {
+                "slug": "shuffle-everything", "name": "Shuffle Everything",
+                "description": "Every available fixture track.", "dynamic": "all",
+            },
+        ]), encoding="utf-8")
         self.music = Music(
             str(root / "music.db"), "/unused/session.sock",
             {"nas01": str(self.nas01), "unr01": str(self.unr01)},
@@ -139,7 +145,7 @@ class MusicTests(unittest.TestCase):
     def test_player_attempts_autoplay_and_makes_blocked_action_obvious(self) -> None:
         page = _player_html("/marsamp").decode("utf-8")
         self.assertIn("autoplay playsinline", page)
-        self.assertIn("PLAY SELECTED SONG", page)
+        self.assertIn('aria-label="Play">▶ PLAY', page)
         self.assertIn("await audio.play()", page)
         self.assertIn("Your browser blocked automatic audio", page)
         self.assertIn("classList.add('attention')", page)
@@ -147,6 +153,11 @@ class MusicTests(unittest.TestCase):
         self.assertIn("/api/previous", page)
         self.assertIn('id="previous"', page)
         self.assertIn('id="next"', page)
+        self.assertIn('id="queue-panel"', page)
+        self.assertIn("/api/queue", page)
+        self.assertIn("MediaMetadata", page)
+        self.assertIn("mediaSession.setActionHandler", page)
+        self.assertIn("manifest.webmanifest", page)
         self.assertIn("audio.addEventListener('ended'", page)
 
     def test_playback_list_advances_and_wraps(self) -> None:
@@ -185,19 +196,54 @@ class MusicTests(unittest.TestCase):
                          ["Track Two", "Track One"])
         self.assertNotIn("relative_path", repr(selected))
 
-    def test_shipped_playlist_manifest_has_ten_reviewed_lists(self) -> None:
+    def test_shipped_playlist_manifest_has_nineteen_curated_lists_and_dynamic_all(self) -> None:
         filename = Path(__file__).resolve().parents[1] / "assets" / "music-playlists.json"
         playlists = Music._load_playlists(str(filename))
-        self.assertEqual(len(playlists), 10)
+        self.assertEqual(len(playlists), 20)
+        self.assertEqual(playlists[0]["slug"], "eighties-essentials")
         sizes = {playlist["slug"]: len(playlist["tracks"]) for playlist in playlists}
-        self.assertEqual(sizes["eighties-essentials"], 100)
-        self.assertTrue(all(size == 35 for slug, size in sizes.items()
-                            if slug != "eighties-essentials"))
-        self.assertEqual(len({playlist["slug"] for playlist in playlists}), 10)
+        self.assertEqual(sizes["eighties-essentials"], 148)
+        new_slugs = {
+            "new-wave-neon", "arena-rock-anthems", "alternative-mixtape",
+            "country-roadhouse", "women-of-mars", "southern-roots",
+            "unplugged-sunday", "funk-disco-dancefloor", "after-midnight",
+        }
+        self.assertTrue(all(35 <= sizes[slug] <= 50 for slug in new_slugs))
+        self.assertEqual(sizes["shuffle-everything"], 0)
+        dynamic = next(playlist for playlist in playlists
+                       if playlist["slug"] == "shuffle-everything")
+        self.assertEqual(dynamic["dynamic"], "all")
+        self.assertEqual(len({playlist["slug"] for playlist in playlists}), 20)
         eighties = next(playlist for playlist in playlists
                          if playlist["slug"] == "eighties-essentials")
-        self.assertEqual(len({track["title"].casefold()
-                              for track in eighties["tracks"]}), 100)
+        self.assertEqual(len({(track["artists"][0].casefold(), track["title"].casefold())
+                              for track in eighties["tracks"]}), 148)
+
+    def test_dynamic_all_playlist_uses_catalog_without_static_track_list(self) -> None:
+        with patch("marsv2.musicd.validate", return_value=IDENTITY):
+            playlists = self.music.handle(
+                self.request("playlists"), (1, 29901, 29901))["playlists"]
+            dynamic = next(row for row in playlists
+                           if row["slug"] == "shuffle-everything")
+            opened = self.music.handle(self.request("playlist_tracks", {
+                "slug": "shuffle-everything", "offset": 0, "limit": 10,
+            }), (1, 29901, 29901))
+            first = opened["tracks"][0]
+            state = self.music.handle(self.request("play", {
+                "id": first["id"], "queue": [first["id"]],
+                "mode": "sequential", "scope": "shuffle-everything",
+            }), (1, 29901, 29901))
+        self.assertEqual(dynamic["tracks"], 3)
+        self.assertEqual(dynamic["dynamic"], "all")
+        self.assertEqual(opened["total"], 3)
+        self.assertEqual(opened["playlist"]["dynamic"], "all")
+        self.assertEqual(state["mode"], "shuffle")
+        advanced = self.music.advance(IDENTITY["account_id"])
+        self.assertNotEqual(advanced["track_id"], first["id"])
+        queue = self.music.queue_view(IDENTITY["account_id"])
+        self.assertEqual(queue["dynamic"], "all")
+        self.assertEqual(queue["total"], 3)
+        self.assertNotIn("relative_path", repr(queue))
 
     def test_advance_rpc_uses_shuffle_queue(self) -> None:
         with patch("marsv2.musicd.validate", return_value=IDENTITY), \
@@ -325,6 +371,33 @@ class MusicTests(unittest.TestCase):
 
                 connection = http.client.HTTPConnection(
                     "127.0.0.1", server.server_port, timeout=3)
+                connection.request("GET", "/marsamp/api/queue", headers={
+                    "Cookie": "marsamp_session=" + browser,
+                })
+                response = connection.getresponse()
+                payload = response.read()
+                connection.close()
+                queue_view = json.loads(payload)
+                self.assertEqual(response.status, 200)
+                self.assertEqual(queue_view["current"]["id"], queue[0])
+                self.assertEqual(queue_view["up_next"][0]["id"], queue[1])
+                self.assertNotIn("relative_path", repr(queue_view))
+
+                for endpoint, action in (("pause", "pause"), ("resume", "play")):
+                    connection = http.client.HTTPConnection(
+                        "127.0.0.1", server.server_port, timeout=3)
+                    connection.request("POST", f"/marsamp/api/{endpoint}", headers={
+                        "Cookie": "marsamp_session=" + browser,
+                        "Origin": "https://bbs.example.test",
+                    })
+                    response = connection.getresponse()
+                    payload = response.read()
+                    connection.close()
+                    self.assertEqual(response.status, 200)
+                    self.assertEqual(json.loads(payload)["action"], action)
+
+                connection = http.client.HTTPConnection(
+                    "127.0.0.1", server.server_port, timeout=3)
                 connection.request("POST", "/marsamp/api/advance", headers={
                     "Cookie": "marsamp_session=" + browser,
                     "Origin": "https://attacker.example",
@@ -333,6 +406,42 @@ class MusicTests(unittest.TestCase):
                 response.read()
                 connection.close()
                 self.assertEqual(response.status, 403)
+
+                connection = http.client.HTTPConnection(
+                    "127.0.0.1", server.server_port, timeout=3)
+                connection.request("POST", "/marsamp/api/stop", headers={
+                    "Cookie": "marsamp_session=" + browser,
+                    "Origin": "https://bbs.example.test",
+                })
+                response = connection.getresponse()
+                payload = response.read()
+                connection.close()
+                self.assertEqual(response.status, 200)
+                self.assertEqual(json.loads(payload)["action"], "stop")
+        finally:
+            server.shutdown()
+            server.server_close()
+
+    def test_player_artwork_and_manifest_are_public_but_contain_no_account_data(self) -> None:
+        MusicHTTP.music = self.music
+        server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), MusicHTTP)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            for path, content_type in (("/marsamp/artwork.svg", "image/svg+xml"),
+                                       ("/marsamp/artwork-192.png", "image/png"),
+                                       ("/marsamp/artwork-512.png", "image/png"),
+                                       ("/marsamp/manifest.webmanifest",
+                                        "application/manifest+json")):
+                connection = http.client.HTTPConnection(
+                    "127.0.0.1", server.server_port, timeout=3)
+                connection.request("GET", path)
+                response = connection.getresponse()
+                payload = response.read()
+                connection.close()
+                self.assertEqual(response.status, 200)
+                self.assertEqual(response.getheader("Content-Type"), content_type)
+                self.assertNotIn(IDENTITY["userid"].encode(), payload)
         finally:
             server.shutdown()
             server.server_close()

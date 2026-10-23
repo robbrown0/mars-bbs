@@ -1,5 +1,637 @@
 [
   {
+    "slug": "eighties-essentials",
+    "name": "1980s Essentials",
+    "description": "An expanded wall-to-wall 1980s collection: new wave, pop, rock, metal, and MTV-era essentials available on the NAS.",
+    "tracks": [
+      {
+        "artists": [
+          "Prince & the Revolution",
+          "Prince"
+        ],
+        "title": "Purple Rain"
+      },
+      {
+        "artist": "Prince",
+        "title": "When Doves Cry"
+      },
+      {
+        "artist": "Prince",
+        "title": "1999"
+      },
+      {
+        "artist": "Michael Jackson",
+        "title": "Billie Jean"
+      },
+      {
+        "artist": "Michael Jackson",
+        "title": "Beat It"
+      },
+      {
+        "artist": "Michael Jackson",
+        "title": "Thriller"
+      },
+      {
+        "artist": "Madonna",
+        "title": "Like a Prayer"
+      },
+      {
+        "artist": "Madonna",
+        "title": "Like a Virgin"
+      },
+      {
+        "artist": "a-ha",
+        "title": "Take on Me"
+      },
+      {
+        "artist": "Toto",
+        "title": "Africa"
+      },
+      {
+        "artist": "Toto",
+        "title": "Rosanna"
+      },
+      {
+        "artists": [
+          "The Police",
+          "Police, The"
+        ],
+        "title": "Every Breath You Take"
+      },
+      {
+        "artists": [
+          "The Police",
+          "Police, The"
+        ],
+        "title": "Don't Stand So Close to Me"
+      },
+      {
+        "artist": "U2",
+        "title": "With or Without You"
+      },
+      {
+        "artist": "U2",
+        "title": "Where the Streets Have No Name"
+      },
+      {
+        "artist": "U2",
+        "title": "Pride (In the Name of Love)"
+      },
+      {
+        "artist": "Guns N' Roses",
+        "title": "Sweet Child O' Mine"
+      },
+      {
+        "artist": "Guns N' Roses",
+        "title": "Welcome to the Jungle"
+      },
+      {
+        "artist": "Guns N' Roses",
+        "title": "Paradise City"
+      },
+      {
+        "artist": "Bon Jovi",
+        "title": "Livin' on a Prayer"
+      },
+      {
+        "artist": "Bon Jovi",
+        "title": "You Give Love a Bad Name"
+      },
+      {
+        "artist": "Bon Jovi",
+        "title": "Wanted Dead or Alive"
+      },
+      {
+        "artist": "Journey",
+        "title": "Don't Stop Believin'"
+      },
+      {
+        "artist": "Cyndi Lauper",
+        "title": "Girls Just Want to Have Fun"
+      },
+      {
+        "artist": "Cyndi Lauper",
+        "title": "Time After Time"
+      },
+      {
+        "artist": "Cyndi Lauper",
+        "title": "True Colors"
+      },
+      {
+        "artist": "Tears For Fears",
+        "title": "Everybody Wants to Rule the World"
+      },
+      {
+        "artist": "Tears For Fears",
+        "title": "Shout"
+      },
+      {
+        "artist": "Tears For Fears",
+        "title": "Head Over Heels"
+      },
+      {
+        "artist": "Simple Minds",
+        "title": "Don't You (Forget About Me)"
+      },
+      {
+        "artist": "Simple Minds",
+        "title": "Alive and Kicking"
+      },
+      {
+        "artist": "Duran Duran",
+        "title": "Hungry Like the Wolf"
+      },
+      {
+        "artist": "Duran Duran",
+        "title": "The Reflex"
+      },
+      {
+        "artist": "Duran Duran",
+        "title": "Save a Prayer"
+      },
+      {
+        "artist": "Eurythmics",
+        "title": "Sweet Dreams (Are Made of This)"
+      },
+      {
+        "artist": "Eurythmics",
+        "title": "Would I Lie to You?"
+      },
+      {
+        "artist": "Dead or Alive",
+        "title": "You Spin Me Round"
+      },
+      {
+        "artist": "Soft Cell",
+        "title": "Tainted Love"
+      },
+      {
+        "artist": "New Order",
+        "title": "Blue Monday"
+      },
+      {
+        "artist": "Depeche Mode",
+        "title": "Just Can't Get Enough"
+      },
+      {
+        "artist": "Depeche Mode",
+        "title": "Personal Jesus"
+      },
+      {
+        "artist": "The Cars",
+        "title": "Drive"
+      },
+      {
+        "artist": "The Cars",
+        "title": "You Might Think"
+      },
+      {
+        "artist": "INXS",
+        "title": "Need You Tonight"
+      },
+      {
+        "artist": "INXS",
+        "title": "Never Tear Us Apart"
+      },
+      {
+        "artist": "INXS",
+        "title": "New Sensation"
+      },
+      {
+        "artist": "Wham!",
+        "title": "Wake Me Up Before You Go-Go"
+      },
+      {
+        "artist": "Wham!",
+        "title": "Careless Whisper"
+      },
+      {
+        "artist": "Pat Benatar",
+        "title": "Love Is a Battlefield"
+      },
+      {
+        "artist": "Pat Benatar",
+        "title": "Hit Me With Your Best Shot"
+      },
+      {
+        "artist": "Heart",
+        "title": "Alone"
+      },
+      {
+        "artist": "Heart",
+        "title": "These Dreams"
+      },
+      {
+        "artist": "Def Leppard",
+        "title": "Photograph"
+      },
+      {
+        "artist": "Def Leppard",
+        "title": "Pour Some Sugar on Me"
+      },
+      {
+        "artist": "Def Leppard",
+        "title": "Rock of Ages"
+      },
+      {
+        "artist": "Van Halen",
+        "title": "Jump"
+      },
+      {
+        "artist": "Van Halen",
+        "title": "Panama"
+      },
+      {
+        "artist": "Van Halen",
+        "title": "Hot for Teacher"
+      },
+      {
+        "artist": "ZZ Top",
+        "title": "Gimme All Your Lovin'"
+      },
+      {
+        "artist": "ZZ Top",
+        "title": "Sharp Dressed Man"
+      },
+      {
+        "artist": "Dire Straits",
+        "title": "Money for Nothing"
+      },
+      {
+        "artist": "Dire Straits",
+        "title": "Walk of Life"
+      },
+      {
+        "artist": "David Bowie",
+        "title": "Let's Dance"
+      },
+      {
+        "artist": "David Bowie",
+        "title": "Modern Love"
+      },
+      {
+        "artist": "Phil Collins",
+        "title": "In the Air Tonight"
+      },
+      {
+        "artist": "Phil Collins",
+        "title": "Sussudio"
+      },
+      {
+        "artist": "Rick Springfield",
+        "title": "Jessie's Girl"
+      },
+      {
+        "artists": [
+          "Bonnie Tyler",
+          "Bonnie_Tyler"
+        ],
+        "title": "Total Eclipse of the Heart"
+      },
+      {
+        "artist": "The Pointer Sisters",
+        "title": "I'm So Excited"
+      },
+      {
+        "artist": "Olivia Newton-John",
+        "title": "Physical"
+      },
+      {
+        "artist": "Kenny Loggins",
+        "title": "Footloose"
+      },
+      {
+        "artist": "Bananarama",
+        "title": "Cruel Summer"
+      },
+      {
+        "artist": "Bananarama",
+        "title": "Venus"
+      },
+      {
+        "artist": "Belinda Carlisle",
+        "title": "Heaven Is a Place on Earth"
+      },
+      {
+        "artist": "Alphaville",
+        "title": "Forever Young"
+      },
+      {
+        "artist": "Men at Work",
+        "title": "Down Under"
+      },
+      {
+        "artist": "The Cure",
+        "title": "Just Like Heaven"
+      },
+      {
+        "artist": "Talking Heads",
+        "title": "Burning Down the House"
+      },
+      {
+        "artist": "Blondie",
+        "title": "Call Me"
+      },
+      {
+        "artists": [
+          "Bruce Springsteen",
+          "Bruce_Springsteen"
+        ],
+        "title": "Dancing in the Dark"
+      },
+      {
+        "artist": "Bryan Adams",
+        "title": "Run to You"
+      },
+      {
+        "artist": "Foreigner",
+        "title": "I Want to Know What Love Is"
+      },
+      {
+        "artist": "'Til Tuesday",
+        "title": "Voices Carry"
+      },
+      {
+        "artist": "Big Country",
+        "title": "In a Big Country"
+      },
+      {
+        "artist": "Erasure",
+        "title": "A Little Respect"
+      },
+      {
+        "artist": "Pet Shop Boys",
+        "title": "West End Girls"
+      },
+      {
+        "artists": [
+          "Orchestral Manoeuvres in the Dark",
+          "OMD"
+        ],
+        "title": "If You Leave"
+      },
+      {
+        "artists": [
+          "The Human League",
+          "Human League"
+        ],
+        "title": "Don't You Want Me"
+      },
+      {
+        "artist": "Metallica",
+        "title": "Master of Puppets"
+      },
+      {
+        "artist": "Metallica",
+        "title": "One"
+      },
+      {
+        "artist": "Ozzy Osbourne",
+        "title": "Crazy Train"
+      },
+      {
+        "artists": [
+          "Ac_Dc",
+          "AC/DC"
+        ],
+        "title": "Back in Black"
+      },
+      {
+        "artists": [
+          "Ac_Dc",
+          "AC/DC"
+        ],
+        "title": "You Shook Me All Night Long"
+      },
+      {
+        "artists": [
+          "Mötley Crüe",
+          "Motley Crue"
+        ],
+        "title": "Kickstart My Heart"
+      },
+      {
+        "artists": [
+          "Mötley Crüe",
+          "Motley Crue"
+        ],
+        "title": "Home Sweet Home"
+      },
+      {
+        "artist": "Poison",
+        "title": "Every Rose Has Its Thorn"
+      },
+      {
+        "artist": "Europe",
+        "title": "The Final Countdown"
+      },
+      {
+        "artist": "Lionel Richie",
+        "title": "All Night Long"
+      },
+      {
+        "artist": "Rick James",
+        "title": "Super Freak"
+      },
+      {
+        "artist": "Roxette",
+        "title": "The Look"
+      },
+      {
+        "artist": "The Police",
+        "title": "Every Little Thing She Does Is Magic"
+      },
+      {
+        "artist": "The Police",
+        "title": "King of Pain"
+      },
+      {
+        "artist": "The Police",
+        "title": "Wrapped Around Your Finger"
+      },
+      {
+        "artist": "Phil Collins",
+        "title": "Another Day in Paradise"
+      },
+      {
+        "artist": "Phil Collins",
+        "title": "You Can't Hurry Love"
+      },
+      {
+        "artist": "Phil Collins",
+        "title": "One More Night"
+      },
+      {
+        "artist": "Phil Collins",
+        "title": "Take Me Home"
+      },
+      {
+        "artist": "Phil Collins",
+        "title": "Against All Odds"
+      },
+      {
+        "artist": "Genesis",
+        "title": "Invisible Touch"
+      },
+      {
+        "artist": "Genesis",
+        "title": "Land of Confusion"
+      },
+      {
+        "artist": "Genesis",
+        "title": "That's All"
+      },
+      {
+        "artist": "Peter Gabriel",
+        "title": "In Your Eyes"
+      },
+      {
+        "artist": "Prince",
+        "title": "Kiss"
+      },
+      {
+        "artist": "Prince",
+        "title": "Little Red Corvette"
+      },
+      {
+        "artist": "Madonna",
+        "title": "Material Girl"
+      },
+      {
+        "artist": "Madonna",
+        "title": "Borderline"
+      },
+      {
+        "artist": "Madonna",
+        "title": "Holiday"
+      },
+      {
+        "artist": "Duran Duran",
+        "title": "Girls on Film"
+      },
+      {
+        "artist": "Duran Duran",
+        "title": "The Wild Boys"
+      },
+      {
+        "artist": "New Order",
+        "title": "Bizarre Love Triangle"
+      },
+      {
+        "artist": "Orchestral Manoeuvres in the Dark",
+        "title": "Enola Gay"
+      },
+      {
+        "artist": "Orchestral Manoeuvres in the Dark",
+        "title": "So in Love"
+      },
+      {
+        "artist": "Human League",
+        "title": "Human"
+      },
+      {
+        "artist": "Human League",
+        "title": "Love Action"
+      },
+      {
+        "artist": "Erasure",
+        "title": "Chains of Love"
+      },
+      {
+        "artist": "Erasure",
+        "title": "Sometimes"
+      },
+      {
+        "artist": "Pet Shop Boys",
+        "title": "It's a Sin"
+      },
+      {
+        "artist": "Pet Shop Boys",
+        "title": "Always on My Mind"
+      },
+      {
+        "artist": "INXS",
+        "title": "Devil Inside"
+      },
+      {
+        "artist": "INXS",
+        "title": "Mystify"
+      },
+      {
+        "artist": "The Cars",
+        "title": "Shake It Up"
+      },
+      {
+        "artist": "The Cars",
+        "title": "Magic"
+      },
+      {
+        "artist": "Culture Club",
+        "title": "Karma Chameleon"
+      },
+      {
+        "artist": "Nena",
+        "title": "99 Luftballons"
+      },
+      {
+        "artist": "A Flock of Seagulls",
+        "title": "I Ran"
+      },
+      {
+        "artist": "Crowded House",
+        "title": "Don't Dream It's Over"
+      },
+      {
+        "artist": "Cutting Crew",
+        "title": "(I Just) Died in Your Arms"
+      },
+      {
+        "artist": "Paula Abdul",
+        "title": "Straight Up"
+      },
+      {
+        "artist": "Whitesnake",
+        "title": "Here I Go Again"
+      },
+      {
+        "artist": "Whitesnake",
+        "title": "Is This Love"
+      },
+      {
+        "artist": "Cinderella",
+        "title": "Gypsy Road"
+      },
+      {
+        "artist": "Def Leppard",
+        "title": "Hysteria"
+      },
+      {
+        "artist": "Def Leppard",
+        "title": "Love Bites"
+      },
+      {
+        "artist": "Guns N' Roses",
+        "title": "Patience"
+      },
+      {
+        "artist": "Metallica",
+        "title": "Fade to Black"
+      },
+      {
+        "artist": "Ozzy Osbourne",
+        "title": "Mr. Crowley"
+      },
+      {
+        "artist": "George Michael",
+        "title": "One More Try"
+      },
+      {
+        "artist": "Steve Winwood",
+        "title": "Higher Love"
+      }
+    ]
+  },
+  {
     "slug": "all-time-picks",
     "name": "All-Time Critics' Picks",
     "description": "Acclaimed songs selected from major critics' all-time lists and matched to this library.",
@@ -495,446 +1127,6 @@
       {
         "artist": "Bill Withers",
         "title": "Lovely Day"
-      }
-    ]
-  },
-  {
-    "slug": "eighties-essentials",
-    "name": "1980s Essentials",
-    "description": "One hundred defining pop, rock, new-wave, R&B, and metal songs from the decade that ruled the mixtape.",
-    "tracks": [
-      {
-        "artists": [
-          "Prince & the Revolution",
-          "Prince"
-        ],
-        "title": "Purple Rain"
-      },
-      {
-        "artist": "Prince",
-        "title": "When Doves Cry"
-      },
-      {
-        "artist": "Prince",
-        "title": "1999"
-      },
-      {
-        "artist": "Michael Jackson",
-        "title": "Billie Jean"
-      },
-      {
-        "artist": "Michael Jackson",
-        "title": "Beat It"
-      },
-      {
-        "artist": "Michael Jackson",
-        "title": "Thriller"
-      },
-      {
-        "artist": "Madonna",
-        "title": "Like a Prayer"
-      },
-      {
-        "artist": "Madonna",
-        "title": "Like a Virgin"
-      },
-      {
-        "artist": "a-ha",
-        "title": "Take on Me"
-      },
-      {
-        "artist": "Toto",
-        "title": "Africa"
-      },
-      {
-        "artist": "Toto",
-        "title": "Rosanna"
-      },
-      {
-        "artists": [
-          "The Police",
-          "Police, The"
-        ],
-        "title": "Every Breath You Take"
-      },
-      {
-        "artists": [
-          "The Police",
-          "Police, The"
-        ],
-        "title": "Don't Stand So Close to Me"
-      },
-      {
-        "artist": "U2",
-        "title": "With or Without You"
-      },
-      {
-        "artist": "U2",
-        "title": "Where the Streets Have No Name"
-      },
-      {
-        "artist": "U2",
-        "title": "Pride (In the Name of Love)"
-      },
-      {
-        "artist": "Guns N' Roses",
-        "title": "Sweet Child O' Mine"
-      },
-      {
-        "artist": "Guns N' Roses",
-        "title": "Welcome to the Jungle"
-      },
-      {
-        "artist": "Guns N' Roses",
-        "title": "Paradise City"
-      },
-      {
-        "artist": "Bon Jovi",
-        "title": "Livin' on a Prayer"
-      },
-      {
-        "artist": "Bon Jovi",
-        "title": "You Give Love a Bad Name"
-      },
-      {
-        "artist": "Bon Jovi",
-        "title": "Wanted Dead or Alive"
-      },
-      {
-        "artist": "Journey",
-        "title": "Don't Stop Believin'"
-      },
-      {
-        "artist": "Cyndi Lauper",
-        "title": "Girls Just Want to Have Fun"
-      },
-      {
-        "artist": "Cyndi Lauper",
-        "title": "Time After Time"
-      },
-      {
-        "artist": "Cyndi Lauper",
-        "title": "True Colors"
-      },
-      {
-        "artist": "Tears For Fears",
-        "title": "Everybody Wants to Rule the World"
-      },
-      {
-        "artist": "Tears For Fears",
-        "title": "Shout"
-      },
-      {
-        "artist": "Tears For Fears",
-        "title": "Head Over Heels"
-      },
-      {
-        "artist": "Simple Minds",
-        "title": "Don't You (Forget About Me)"
-      },
-      {
-        "artist": "Simple Minds",
-        "title": "Alive and Kicking"
-      },
-      {
-        "artist": "Duran Duran",
-        "title": "Hungry Like the Wolf"
-      },
-      {
-        "artist": "Duran Duran",
-        "title": "The Reflex"
-      },
-      {
-        "artist": "Duran Duran",
-        "title": "Save a Prayer"
-      },
-      {
-        "artist": "Eurythmics",
-        "title": "Sweet Dreams (Are Made of This)"
-      },
-      {
-        "artist": "Eurythmics",
-        "title": "Would I Lie to You?"
-      },
-      {
-        "artist": "Dead or Alive",
-        "title": "You Spin Me Round"
-      },
-      {
-        "artist": "Soft Cell",
-        "title": "Tainted Love"
-      },
-      {
-        "artist": "New Order",
-        "title": "Blue Monday"
-      },
-      {
-        "artist": "Depeche Mode",
-        "title": "Just Can't Get Enough"
-      },
-      {
-        "artist": "Depeche Mode",
-        "title": "Personal Jesus"
-      },
-      {
-        "artist": "The Cars",
-        "title": "Drive"
-      },
-      {
-        "artist": "The Cars",
-        "title": "You Might Think"
-      },
-      {
-        "artist": "INXS",
-        "title": "Need You Tonight"
-      },
-      {
-        "artist": "INXS",
-        "title": "Never Tear Us Apart"
-      },
-      {
-        "artist": "INXS",
-        "title": "New Sensation"
-      },
-      {
-        "artist": "Wham!",
-        "title": "Wake Me Up Before You Go-Go"
-      },
-      {
-        "artist": "Wham!",
-        "title": "Careless Whisper"
-      },
-      {
-        "artist": "Pat Benatar",
-        "title": "Love Is a Battlefield"
-      },
-      {
-        "artist": "Pat Benatar",
-        "title": "Hit Me With Your Best Shot"
-      },
-      {
-        "artist": "Heart",
-        "title": "Alone"
-      },
-      {
-        "artist": "Heart",
-        "title": "These Dreams"
-      },
-      {
-        "artist": "Def Leppard",
-        "title": "Photograph"
-      },
-      {
-        "artist": "Def Leppard",
-        "title": "Pour Some Sugar on Me"
-      },
-      {
-        "artist": "Def Leppard",
-        "title": "Rock of Ages"
-      },
-      {
-        "artist": "Van Halen",
-        "title": "Jump"
-      },
-      {
-        "artist": "Van Halen",
-        "title": "Panama"
-      },
-      {
-        "artist": "Van Halen",
-        "title": "Hot for Teacher"
-      },
-      {
-        "artist": "ZZ Top",
-        "title": "Gimme All Your Lovin'"
-      },
-      {
-        "artist": "ZZ Top",
-        "title": "Sharp Dressed Man"
-      },
-      {
-        "artist": "Dire Straits",
-        "title": "Money for Nothing"
-      },
-      {
-        "artist": "Dire Straits",
-        "title": "Walk of Life"
-      },
-      {
-        "artist": "David Bowie",
-        "title": "Let's Dance"
-      },
-      {
-        "artist": "David Bowie",
-        "title": "Modern Love"
-      },
-      {
-        "artist": "Phil Collins",
-        "title": "In the Air Tonight"
-      },
-      {
-        "artist": "Phil Collins",
-        "title": "Sussudio"
-      },
-      {
-        "artist": "Rick Springfield",
-        "title": "Jessie's Girl"
-      },
-      {
-        "artists": [
-          "Bonnie Tyler",
-          "Bonnie_Tyler"
-        ],
-        "title": "Total Eclipse of the Heart"
-      },
-      {
-        "artist": "The Pointer Sisters",
-        "title": "I'm So Excited"
-      },
-      {
-        "artist": "Olivia Newton-John",
-        "title": "Physical"
-      },
-      {
-        "artist": "Kenny Loggins",
-        "title": "Footloose"
-      },
-      {
-        "artist": "Bananarama",
-        "title": "Cruel Summer"
-      },
-      {
-        "artist": "Bananarama",
-        "title": "Venus"
-      },
-      {
-        "artist": "Belinda Carlisle",
-        "title": "Heaven Is a Place on Earth"
-      },
-      {
-        "artist": "Alphaville",
-        "title": "Forever Young"
-      },
-      {
-        "artist": "Men at Work",
-        "title": "Down Under"
-      },
-      {
-        "artist": "The Cure",
-        "title": "Just Like Heaven"
-      },
-      {
-        "artist": "Talking Heads",
-        "title": "Burning Down the House"
-      },
-      {
-        "artist": "Blondie",
-        "title": "Call Me"
-      },
-      {
-        "artists": [
-          "Bruce Springsteen",
-          "Bruce_Springsteen"
-        ],
-        "title": "Dancing in the Dark"
-      },
-      {
-        "artist": "Bryan Adams",
-        "title": "Run to You"
-      },
-      {
-        "artist": "Foreigner",
-        "title": "I Want to Know What Love Is"
-      },
-      {
-        "artist": "'Til Tuesday",
-        "title": "Voices Carry"
-      },
-      {
-        "artist": "Big Country",
-        "title": "In a Big Country"
-      },
-      {
-        "artist": "Erasure",
-        "title": "A Little Respect"
-      },
-      {
-        "artist": "Pet Shop Boys",
-        "title": "West End Girls"
-      },
-      {
-        "artists": [
-          "Orchestral Manoeuvres in the Dark",
-          "OMD"
-        ],
-        "title": "If You Leave"
-      },
-      {
-        "artists": [
-          "The Human League",
-          "Human League"
-        ],
-        "title": "Don't You Want Me"
-      },
-      {
-        "artist": "Metallica",
-        "title": "Master of Puppets"
-      },
-      {
-        "artist": "Metallica",
-        "title": "One"
-      },
-      {
-        "artist": "Ozzy Osbourne",
-        "title": "Crazy Train"
-      },
-      {
-        "artists": [
-          "Ac_Dc",
-          "AC/DC"
-        ],
-        "title": "Back in Black"
-      },
-      {
-        "artists": [
-          "Ac_Dc",
-          "AC/DC"
-        ],
-        "title": "You Shook Me All Night Long"
-      },
-      {
-        "artists": [
-          "Mötley Crüe",
-          "Motley Crue"
-        ],
-        "title": "Kickstart My Heart"
-      },
-      {
-        "artists": [
-          "Mötley Crüe",
-          "Motley Crue"
-        ],
-        "title": "Home Sweet Home"
-      },
-      {
-        "artist": "Poison",
-        "title": "Every Rose Has Its Thorn"
-      },
-      {
-        "artist": "Europe",
-        "title": "The Final Countdown"
-      },
-      {
-        "artist": "Lionel Richie",
-        "title": "All Night Long"
-      },
-      {
-        "artist": "Rick James",
-        "title": "Super Freak"
-      },
-      {
-        "artist": "Roxette",
-        "title": "The Look"
       }
     ]
   },
@@ -1863,5 +2055,1733 @@
         "title": "The Chain"
       }
     ]
+  },
+  {
+    "slug": "new-wave-neon",
+    "name": "New Wave Neon",
+    "description": "Synths, hooks, and after-dark new wave drawn from the strongest available 1980s recordings.",
+    "tracks": [
+      {
+        "artist": "a-ha",
+        "title": "Take on Me"
+      },
+      {
+        "artist": "Tears For Fears",
+        "title": "Everybody Wants to Rule the World"
+      },
+      {
+        "artist": "Tears For Fears",
+        "title": "Shout"
+      },
+      {
+        "artist": "Tears For Fears",
+        "title": "Head Over Heels"
+      },
+      {
+        "artist": "Simple Minds",
+        "title": "Don't You (Forget About Me)"
+      },
+      {
+        "artist": "Simple Minds",
+        "title": "Alive and Kicking"
+      },
+      {
+        "artist": "Duran Duran",
+        "title": "Hungry Like the Wolf"
+      },
+      {
+        "artist": "Duran Duran",
+        "title": "The Reflex"
+      },
+      {
+        "artist": "Duran Duran",
+        "title": "Save a Prayer"
+      },
+      {
+        "artist": "Eurythmics",
+        "title": "Sweet Dreams (Are Made of This)"
+      },
+      {
+        "artist": "Eurythmics",
+        "title": "Would I Lie to You?"
+      },
+      {
+        "artist": "Dead or Alive",
+        "title": "You Spin Me Round"
+      },
+      {
+        "artist": "Soft Cell",
+        "title": "Tainted Love"
+      },
+      {
+        "artist": "New Order",
+        "title": "Blue Monday"
+      },
+      {
+        "artist": "Depeche Mode",
+        "title": "Just Can't Get Enough"
+      },
+      {
+        "artist": "Depeche Mode",
+        "title": "Personal Jesus"
+      },
+      {
+        "artist": "The Cars",
+        "title": "Drive"
+      },
+      {
+        "artist": "The Cars",
+        "title": "You Might Think"
+      },
+      {
+        "artist": "INXS",
+        "title": "Need You Tonight"
+      },
+      {
+        "artist": "INXS",
+        "title": "Never Tear Us Apart"
+      },
+      {
+        "artist": "INXS",
+        "title": "New Sensation"
+      },
+      {
+        "artist": "Bananarama",
+        "title": "Cruel Summer"
+      },
+      {
+        "artist": "Bananarama",
+        "title": "Venus"
+      },
+      {
+        "artist": "Alphaville",
+        "title": "Forever Young"
+      },
+      {
+        "artist": "The Cure",
+        "title": "Just Like Heaven"
+      },
+      {
+        "artist": "Talking Heads",
+        "title": "Burning Down the House"
+      },
+      {
+        "artist": "Blondie",
+        "title": "Call Me"
+      },
+      {
+        "artist": "'Til Tuesday",
+        "title": "Voices Carry"
+      },
+      {
+        "artist": "Big Country",
+        "title": "In a Big Country"
+      },
+      {
+        "artist": "Erasure",
+        "title": "A Little Respect"
+      },
+      {
+        "artist": "Pet Shop Boys",
+        "title": "West End Girls"
+      },
+      {
+        "artists": [
+          "Orchestral Manoeuvres in the Dark",
+          "OMD"
+        ],
+        "title": "If You Leave"
+      },
+      {
+        "artists": [
+          "The Human League",
+          "Human League"
+        ],
+        "title": "Don't You Want Me"
+      },
+      {
+        "artist": "Duran Duran",
+        "title": "Girls on Film"
+      },
+      {
+        "artist": "Duran Duran",
+        "title": "The Wild Boys"
+      },
+      {
+        "artist": "New Order",
+        "title": "Bizarre Love Triangle"
+      },
+      {
+        "artist": "Orchestral Manoeuvres in the Dark",
+        "title": "Enola Gay"
+      },
+      {
+        "artist": "Orchestral Manoeuvres in the Dark",
+        "title": "So in Love"
+      },
+      {
+        "artist": "Human League",
+        "title": "Human"
+      },
+      {
+        "artist": "Human League",
+        "title": "Love Action"
+      },
+      {
+        "artist": "Erasure",
+        "title": "Chains of Love"
+      },
+      {
+        "artist": "Erasure",
+        "title": "Sometimes"
+      },
+      {
+        "artist": "Pet Shop Boys",
+        "title": "It's a Sin"
+      },
+      {
+        "artist": "Pet Shop Boys",
+        "title": "Always on My Mind"
+      },
+      {
+        "artist": "INXS",
+        "title": "Devil Inside"
+      }
+    ]
+  },
+  {
+    "slug": "arena-rock-anthems",
+    "name": "Arena Rock Anthems",
+    "description": "Big guitars, bigger choruses, and road-tested rock anthems built for maximum volume.",
+    "tracks": [
+      {
+        "artist": "Led Zeppelin",
+        "title": "Stairway to Heaven"
+      },
+      {
+        "artists": [
+          "Eagles",
+          "The Eagles"
+        ],
+        "title": "Hotel California"
+      },
+      {
+        "artist": "Pink Floyd",
+        "title": "Comfortably Numb"
+      },
+      {
+        "artist": "Guns N' Roses",
+        "title": "Sweet Child O' Mine"
+      },
+      {
+        "artists": [
+          "AC/DC",
+          "Ac_Dc"
+        ],
+        "title": "Back in Black"
+      },
+      {
+        "artist": "Lynyrd Skynyrd",
+        "title": "Free Bird"
+      },
+      {
+        "artist": "Rush",
+        "title": "Tom Sawyer"
+      },
+      {
+        "artist": "Journey",
+        "title": "Don't Stop Believin'",
+        "album": "Escape"
+      },
+      {
+        "artist": "Kansas",
+        "title": "Carry On Wayward Son"
+      },
+      {
+        "artist": "Aerosmith",
+        "title": "Dream On"
+      },
+      {
+        "artist": "Queen",
+        "title": "Another One Bites the Dust"
+      },
+      {
+        "artist": "Led Zeppelin",
+        "title": "Whole Lotta Love"
+      },
+      {
+        "artist": "Led Zeppelin",
+        "title": "Kashmir"
+      },
+      {
+        "artist": "Pink Floyd",
+        "title": "Wish You Were Here"
+      },
+      {
+        "artist": "Pink Floyd",
+        "title": "Another Brick in the Wall"
+      },
+      {
+        "artists": [
+          "Ac_Dc",
+          "AC/DC"
+        ],
+        "title": "You Shook Me All Night Long"
+      },
+      {
+        "artist": "Van Halen",
+        "title": "Jump"
+      },
+      {
+        "artist": "Def Leppard",
+        "title": "Photograph"
+      },
+      {
+        "artist": "ZZ Top",
+        "title": "Gimme All Your Lovin'"
+      },
+      {
+        "artist": "ZZ Top",
+        "title": "Sharp Dressed Man"
+      },
+      {
+        "artist": "Foreigner",
+        "title": "Juke Box Hero"
+      },
+      {
+        "artist": "Bon Jovi",
+        "title": "Livin' on a Prayer"
+      },
+      {
+        "artists": [
+          "The Eagles",
+          "Eagles"
+        ],
+        "title": "Take It Easy"
+      },
+      {
+        "artists": [
+          "The Eagles",
+          "Eagles"
+        ],
+        "title": "Life in the Fast Lane"
+      },
+      {
+        "artist": "Aerosmith",
+        "title": "Sweet Emotion"
+      },
+      {
+        "artist": "Rush",
+        "title": "The Spirit of Radio"
+      },
+      {
+        "artist": "Guns N' Roses",
+        "title": "Welcome to the Jungle"
+      },
+      {
+        "artist": "Guns N' Roses",
+        "title": "Paradise City"
+      },
+      {
+        "artist": "Bon Jovi",
+        "title": "You Give Love a Bad Name"
+      },
+      {
+        "artist": "Bon Jovi",
+        "title": "Wanted Dead or Alive"
+      },
+      {
+        "artist": "Def Leppard",
+        "title": "Pour Some Sugar on Me"
+      },
+      {
+        "artist": "Def Leppard",
+        "title": "Rock of Ages"
+      },
+      {
+        "artist": "Van Halen",
+        "title": "Panama"
+      },
+      {
+        "artist": "Van Halen",
+        "title": "Hot for Teacher"
+      },
+      {
+        "artist": "Foreigner",
+        "title": "I Want to Know What Love Is"
+      },
+      {
+        "artist": "Metallica",
+        "title": "Master of Puppets"
+      },
+      {
+        "artist": "Metallica",
+        "title": "One"
+      },
+      {
+        "artist": "Ozzy Osbourne",
+        "title": "Crazy Train"
+      },
+      {
+        "artists": [
+          "Mötley Crüe",
+          "Motley Crue"
+        ],
+        "title": "Kickstart My Heart"
+      },
+      {
+        "artists": [
+          "Mötley Crüe",
+          "Motley Crue"
+        ],
+        "title": "Home Sweet Home"
+      },
+      {
+        "artist": "Poison",
+        "title": "Every Rose Has Its Thorn"
+      },
+      {
+        "artist": "Europe",
+        "title": "The Final Countdown"
+      },
+      {
+        "artist": "Def Leppard",
+        "title": "Hysteria"
+      },
+      {
+        "artist": "Def Leppard",
+        "title": "Love Bites"
+      },
+      {
+        "artist": "Guns N' Roses",
+        "title": "Patience"
+      }
+    ]
+  },
+  {
+    "slug": "alternative-mixtape",
+    "name": "Alternative Mixtape",
+    "description": "College rock, grunge, Britpop, and left-of-center favorites from the 1980s through the 2000s.",
+    "tracks": [
+      {
+        "artist": "Nirvana",
+        "title": "Come as You Are",
+        "album": "MTV Unplugged in New York"
+      },
+      {
+        "artist": "R.E.M",
+        "title": "Losing My Religion"
+      },
+      {
+        "artist": "Red Hot Chili Peppers",
+        "title": "Under the Bridge"
+      },
+      {
+        "artist": "Soundgarden",
+        "title": "Black Hole Sun"
+      },
+      {
+        "artist": "Oasis",
+        "title": "Wonderwall"
+      },
+      {
+        "artist": "The Cranberries",
+        "title": "Zombie"
+      },
+      {
+        "artist": "Blind Melon",
+        "title": "No Rain"
+      },
+      {
+        "artist": "The Goo Goo Dolls",
+        "title": "Iris"
+      },
+      {
+        "artist": "Alanis Morissette",
+        "title": "You Oughta Know"
+      },
+      {
+        "artist": "Sinead O'Connor",
+        "title": "Nothing Compares 2 U"
+      },
+      {
+        "artist": "Collective Soul",
+        "title": "Shine"
+      },
+      {
+        "artist": "Barenaked Ladies",
+        "title": "One Week",
+        "album": "Stunt"
+      },
+      {
+        "artist": "Nirvana",
+        "title": "Smells Like Teen Spirit"
+      },
+      {
+        "artist": "Nirvana",
+        "title": "Lithium"
+      },
+      {
+        "artist": "Nirvana",
+        "title": "All Apologies"
+      },
+      {
+        "artist": "Nirvana",
+        "title": "Heart-Shaped Box"
+      },
+      {
+        "artist": "Red Hot Chili Peppers",
+        "title": "Scar Tissue"
+      },
+      {
+        "artist": "Red Hot Chili Peppers",
+        "title": "Californication"
+      },
+      {
+        "artist": "Oasis",
+        "title": "Don't Look Back in Anger"
+      },
+      {
+        "artist": "Oasis",
+        "title": "Champagne Supernova"
+      },
+      {
+        "artist": "The Cranberries",
+        "title": "Dreams"
+      },
+      {
+        "artists": [
+          "The Goo Goo Dolls",
+          "Goo Goo Dolls"
+        ],
+        "title": "Slide"
+      },
+      {
+        "artist": "Alanis Morissette",
+        "title": "Hand in My Pocket"
+      },
+      {
+        "artist": "Alanis Morissette",
+        "title": "Ironic"
+      },
+      {
+        "artist": "Alanis Morissette",
+        "title": "Head Over Feet"
+      },
+      {
+        "artist": "Collective Soul",
+        "title": "December"
+      },
+      {
+        "artist": "Collective Soul",
+        "title": "The World I Know"
+      },
+      {
+        "artist": "Weezer",
+        "title": "Buddy Holly"
+      },
+      {
+        "artist": "Weezer",
+        "title": "Say It Ain’t So"
+      },
+      {
+        "artist": "Weezer",
+        "title": "Undone - The Sweater Song"
+      },
+      {
+        "artist": "Live",
+        "title": "Lightning Crashes"
+      },
+      {
+        "artist": "Live",
+        "title": "I Alone"
+      },
+      {
+        "artist": "Portishead",
+        "title": "Sour Times"
+      },
+      {
+        "artist": "Portishead",
+        "title": "Glory Box"
+      },
+      {
+        "artist": "Sublime",
+        "title": "What I Got"
+      },
+      {
+        "artist": "New Order",
+        "title": "Blue Monday"
+      },
+      {
+        "artist": "Depeche Mode",
+        "title": "Just Can't Get Enough"
+      },
+      {
+        "artist": "Depeche Mode",
+        "title": "Personal Jesus"
+      },
+      {
+        "artist": "The Cure",
+        "title": "Just Like Heaven"
+      },
+      {
+        "artist": "Talking Heads",
+        "title": "Burning Down the House"
+      }
+    ]
+  },
+  {
+    "slug": "country-roadhouse",
+    "name": "Country Roadhouse",
+    "description": "Honky-tonk, outlaw country, neo-traditional favorites, and songs that belong on a jukebox.",
+    "tracks": [
+      {
+        "artist": "Johnny Cash",
+        "title": "Ring of Fire"
+      },
+      {
+        "artist": "Johnny Cash",
+        "title": "I Walk the Line"
+      },
+      {
+        "artist": "George Jones",
+        "title": "He Stopped Loving Her Today"
+      },
+      {
+        "artist": "George Strait",
+        "title": "Amarillo by Morning"
+      },
+      {
+        "artist": "Loretta Lynn",
+        "title": "Coal Miner's Daughter"
+      },
+      {
+        "artist": "Willie Nelson",
+        "title": "Blue Eyes Crying in the Rain"
+      },
+      {
+        "artist": "Kenny Rogers",
+        "title": "The Gambler"
+      },
+      {
+        "artist": "Garth Brooks",
+        "title": "Friends in Low Places"
+      },
+      {
+        "artist": "Garth Brooks",
+        "title": "The Thunder Rolls"
+      },
+      {
+        "artist": "Alan Jackson",
+        "title": "Chattahoochee"
+      },
+      {
+        "artist": "Brooks & Dunn",
+        "title": "Boot Scootin' Boogie"
+      },
+      {
+        "artist": "John Denver",
+        "title": "Take Me Home, Country Roads"
+      },
+      {
+        "artist": "Waylon Jennings",
+        "title": "Luckenbach, Texas"
+      },
+      {
+        "artist": "Waylon Jennings",
+        "title": "Mammas Don't Let Your Babies Grow Up to Be Cowboys"
+      },
+      {
+        "artist": "Willie Nelson",
+        "title": "On the Road Again"
+      },
+      {
+        "artist": "Willie Nelson",
+        "title": "Always on My Mind"
+      },
+      {
+        "artist": "Loretta Lynn",
+        "title": "You Ain’t Woman Enough"
+      },
+      {
+        "artist": "Loretta Lynn",
+        "title": "Fist City"
+      },
+      {
+        "artist": "Garth Brooks",
+        "title": "Callin’ Baton Rouge"
+      },
+      {
+        "artist": "Alan Jackson",
+        "title": "Don't Rock the Jukebox"
+      },
+      {
+        "artist": "Alan Jackson",
+        "title": "Gone Country"
+      },
+      {
+        "artist": "Brooks & Dunn",
+        "title": "Neon Moon"
+      },
+      {
+        "artist": "Brooks & Dunn",
+        "title": "My Maria"
+      },
+      {
+        "artist": "Vince Gill",
+        "title": "Go Rest High on That Mountain"
+      },
+      {
+        "artist": "Keith Whitley",
+        "title": "Don't Close Your Eyes"
+      },
+      {
+        "artist": "Keith Whitley",
+        "title": "When You Say Nothing at All"
+      },
+      {
+        "artist": "Dwight Yoakam",
+        "title": "Guitars, Cadillacs"
+      },
+      {
+        "artist": "Patty Loveless",
+        "title": "Blame It on Your Heart"
+      },
+      {
+        "artist": "Travis Tritt",
+        "title": "Here's a Quarter"
+      },
+      {
+        "artist": "Alabama",
+        "title": "Mountain Music"
+      },
+      {
+        "artist": "Lucinda Williams",
+        "title": "Car Wheels on a Gravel Road"
+      },
+      {
+        "artist": "Johnny Cash",
+        "title": "Folsom Prison Blues"
+      },
+      {
+        "artist": "Garth Brooks",
+        "title": "The River"
+      },
+      {
+        "artist": "Alan Jackson",
+        "title": "Remember When"
+      },
+      {
+        "artist": "Vern Gosdin",
+        "title": "Chiseled in Stone"
+      },
+      {
+        "artist": "The Eagles",
+        "title": "Take It Easy"
+      },
+      {
+        "artist": "Fleetwood Mac",
+        "title": "Go Your Own Way"
+      },
+      {
+        "artist": "Tom Petty & The Heartbreakers",
+        "title": "Free Fallin'"
+      },
+      {
+        "artist": "Tom Petty & The Heartbreakers",
+        "title": "Runnin' Down a Dream"
+      },
+      {
+        "artist": "Tom Petty & The Heartbreakers",
+        "title": "American Girl"
+      },
+      {
+        "artist": "Lynyrd Skynyrd",
+        "title": "Sweet Home Alabama"
+      },
+      {
+        "artist": "Don Henley",
+        "title": "The Boys of Summer"
+      },
+      {
+        "artist": "America",
+        "title": "Ventura Highway"
+      },
+      {
+        "artist": "The Doobie Brothers",
+        "title": "Listen to the Music"
+      },
+      {
+        "artist": "Dire Straits",
+        "title": "Walk of Life"
+      }
+    ]
+  },
+  {
+    "slug": "women-of-mars",
+    "name": "Women of Mars",
+    "description": "Essential performances by women across rock, pop, country, soul, and alternative music.",
+    "tracks": [
+      {
+        "artist": "Aretha Franklin",
+        "title": "Respect",
+        "album": "I Never Loved a Man the Way I Love You"
+      },
+      {
+        "artist": "Fleetwood Mac",
+        "title": "Dreams",
+        "album": "Rumours"
+      },
+      {
+        "artist": "Cyndi Lauper",
+        "title": "Time After Time"
+      },
+      {
+        "artist": "Madonna",
+        "title": "Like a Prayer"
+      },
+      {
+        "artist": "Madonna",
+        "title": "Like a Virgin"
+      },
+      {
+        "artist": "Cyndi Lauper",
+        "title": "Girls Just Want to Have Fun"
+      },
+      {
+        "artist": "Cyndi Lauper",
+        "title": "True Colors"
+      },
+      {
+        "artist": "Pat Benatar",
+        "title": "Love Is a Battlefield"
+      },
+      {
+        "artist": "Pat Benatar",
+        "title": "Hit Me With Your Best Shot"
+      },
+      {
+        "artist": "Heart",
+        "title": "Alone"
+      },
+      {
+        "artist": "Heart",
+        "title": "These Dreams"
+      },
+      {
+        "artists": [
+          "Bonnie Tyler",
+          "Bonnie_Tyler"
+        ],
+        "title": "Total Eclipse of the Heart"
+      },
+      {
+        "artist": "Olivia Newton-John",
+        "title": "Physical"
+      },
+      {
+        "artist": "Bananarama",
+        "title": "Cruel Summer"
+      },
+      {
+        "artist": "Bananarama",
+        "title": "Venus"
+      },
+      {
+        "artist": "Belinda Carlisle",
+        "title": "Heaven Is a Place on Earth"
+      },
+      {
+        "artist": "Blondie",
+        "title": "Call Me"
+      },
+      {
+        "artist": "Madonna",
+        "title": "Material Girl"
+      },
+      {
+        "artist": "Madonna",
+        "title": "Borderline"
+      },
+      {
+        "artist": "Madonna",
+        "title": "Holiday"
+      },
+      {
+        "artist": "The Cranberries",
+        "title": "Zombie"
+      },
+      {
+        "artist": "Alanis Morissette",
+        "title": "You Oughta Know"
+      },
+      {
+        "artist": "Sinead O'Connor",
+        "title": "Nothing Compares 2 U"
+      },
+      {
+        "artist": "The Cranberries",
+        "title": "Dreams"
+      },
+      {
+        "artist": "Alanis Morissette",
+        "title": "Hand in My Pocket"
+      },
+      {
+        "artist": "Alanis Morissette",
+        "title": "Ironic"
+      },
+      {
+        "artist": "Alanis Morissette",
+        "title": "Head Over Feet"
+      },
+      {
+        "artist": "Loretta Lynn",
+        "title": "Coal Miner's Daughter"
+      },
+      {
+        "artist": "Loretta Lynn",
+        "title": "You Ain’t Woman Enough"
+      },
+      {
+        "artist": "Loretta Lynn",
+        "title": "Fist City"
+      },
+      {
+        "artist": "Patty Loveless",
+        "title": "Blame It on Your Heart"
+      },
+      {
+        "artist": "Lucinda Williams",
+        "title": "Car Wheels on a Gravel Road"
+      },
+      {
+        "artist": "Bonnie Raitt",
+        "title": "Angel from Montgomery"
+      },
+      {
+        "artist": "Lucinda Williams",
+        "title": "Drunken Angel"
+      },
+      {
+        "artist": "Bonnie Raitt",
+        "title": "I Can’t Make You Love Me"
+      },
+      {
+        "artist": "Bonnie Raitt",
+        "title": "Nick of Time"
+      },
+      {
+        "artist": "Norah Jones",
+        "title": "Don’t Know Why"
+      },
+      {
+        "artist": "Lady Gaga",
+        "title": "Just Dance"
+      },
+      {
+        "artist": "Lady Gaga",
+        "title": "Poker Face"
+      },
+      {
+        "artist": "Katy Perry",
+        "title": "Firework"
+      }
+    ]
+  },
+  {
+    "slug": "southern-roots",
+    "name": "Southern & Roots Rock",
+    "description": "Southern rock, heartland drive, country grit, and roots music for a long ride.",
+    "tracks": [
+      {
+        "artists": [
+          "Eagles",
+          "The Eagles"
+        ],
+        "title": "Hotel California"
+      },
+      {
+        "artist": "Lynyrd Skynyrd",
+        "title": "Free Bird"
+      },
+      {
+        "artist": "Creedence Clearwater Revival",
+        "title": "Fortunate Son"
+      },
+      {
+        "artist": "ZZ Top",
+        "title": "Gimme All Your Lovin'"
+      },
+      {
+        "artist": "ZZ Top",
+        "title": "Sharp Dressed Man"
+      },
+      {
+        "artists": [
+          "The Eagles",
+          "Eagles"
+        ],
+        "title": "Take It Easy"
+      },
+      {
+        "artists": [
+          "The Eagles",
+          "Eagles"
+        ],
+        "title": "Life in the Fast Lane"
+      },
+      {
+        "artists": [
+          "The Steve Miller Band",
+          "Steve Miller Band"
+        ],
+        "title": "Fly Like an Eagle"
+      },
+      {
+        "artists": [
+          "The Steve Miller Band",
+          "Steve Miller Band"
+        ],
+        "title": "Rock’n Me"
+      },
+      {
+        "artist": "Tom Petty & The Heartbreakers",
+        "title": "Runnin' Down a Dream"
+      },
+      {
+        "artist": "Tom Petty & The Heartbreakers",
+        "title": "American Girl"
+      },
+      {
+        "artists": [
+          "Bob Seger & the Silver Bullet Band",
+          "Bob Seger"
+        ],
+        "title": "Night Moves"
+      },
+      {
+        "artist": "Willie Nelson",
+        "title": "On the Road Again"
+      },
+      {
+        "artist": "Tom Petty & The Heartbreakers",
+        "title": "Free Fallin'"
+      },
+      {
+        "artist": "Lynyrd Skynyrd",
+        "title": "Sweet Home Alabama"
+      },
+      {
+        "artist": "Tom Petty & The Heartbreakers",
+        "title": "Learning to Fly"
+      },
+      {
+        "artist": "Tom Petty & The Heartbreakers",
+        "title": "I Won’t Back Down"
+      },
+      {
+        "artists": [
+          "The Eagles",
+          "Eagles"
+        ],
+        "title": "Hotel California"
+      },
+      {
+        "artists": [
+          "Bob Seger & the Silver Bullet Band",
+          "Bob Seger"
+        ],
+        "title": "Turn the Page"
+      },
+      {
+        "artists": [
+          "Bob Seger & the Silver Bullet Band",
+          "Bob Seger"
+        ],
+        "title": "Hollywood Nights"
+      },
+      {
+        "artist": "Creedence Clearwater Revival",
+        "title": "Up Around the Bend"
+      },
+      {
+        "artist": "Creedence Clearwater Revival",
+        "title": "Have You Ever Seen the Rain"
+      },
+      {
+        "artists": [
+          "The Steve Miller Band",
+          "Steve Miller Band"
+        ],
+        "title": "Jet Airliner"
+      },
+      {
+        "artist": "Johnny Cash",
+        "title": "Ring of Fire"
+      },
+      {
+        "artist": "Johnny Cash",
+        "title": "I Walk the Line"
+      },
+      {
+        "artist": "Willie Nelson",
+        "title": "Blue Eyes Crying in the Rain"
+      },
+      {
+        "artist": "Alan Jackson",
+        "title": "Chattahoochee"
+      },
+      {
+        "artist": "Brooks & Dunn",
+        "title": "Boot Scootin' Boogie"
+      },
+      {
+        "artist": "Waylon Jennings",
+        "title": "Luckenbach, Texas"
+      },
+      {
+        "artist": "Waylon Jennings",
+        "title": "Mammas Don't Let Your Babies Grow Up to Be Cowboys"
+      },
+      {
+        "artist": "Willie Nelson",
+        "title": "Always on My Mind"
+      },
+      {
+        "artist": "Alan Jackson",
+        "title": "Don't Rock the Jukebox"
+      },
+      {
+        "artist": "Alan Jackson",
+        "title": "Gone Country"
+      },
+      {
+        "artist": "Brooks & Dunn",
+        "title": "Neon Moon"
+      },
+      {
+        "artist": "Brooks & Dunn",
+        "title": "My Maria"
+      },
+      {
+        "artist": "Dwight Yoakam",
+        "title": "Guitars, Cadillacs"
+      },
+      {
+        "artist": "Travis Tritt",
+        "title": "Here's a Quarter"
+      },
+      {
+        "artist": "Lucinda Williams",
+        "title": "Car Wheels on a Gravel Road"
+      },
+      {
+        "artist": "Johnny Cash",
+        "title": "Folsom Prison Blues"
+      },
+      {
+        "artist": "Alan Jackson",
+        "title": "Remember When"
+      }
+    ]
+  },
+  {
+    "slug": "unplugged-sunday",
+    "name": "Unplugged Sunday",
+    "description": "Warm voices, acoustic guitars, and enduring songwriting for a slower stretch of the day.",
+    "tracks": [
+      {
+        "artist": "James Taylor",
+        "title": "Fire and Rain"
+      },
+      {
+        "artist": "James Taylor",
+        "title": "You've Got a Friend"
+      },
+      {
+        "artist": "James Taylor",
+        "title": "Carolina in My Mind"
+      },
+      {
+        "artist": "Joni Mitchell",
+        "title": "California",
+        "album": "Blue"
+      },
+      {
+        "artist": "Simon & Garfunkel",
+        "title": "The Sound of Silence"
+      },
+      {
+        "artist": "Simon & Garfunkel",
+        "title": "Bridge over Troubled Water"
+      },
+      {
+        "artist": "Bob Dylan",
+        "title": "Tangled Up in Blue"
+      },
+      {
+        "artist": "Bob Dylan",
+        "title": "The Times They Are A-Changin'"
+      },
+      {
+        "artist": "Elton John",
+        "title": "Your Song"
+      },
+      {
+        "artist": "Johnny Cash",
+        "title": "Hurt",
+        "album": "American IV"
+      },
+      {
+        "artist": "Neil Young",
+        "title": "Heart of Gold",
+        "album": "Harvest"
+      },
+      {
+        "artist": "Bonnie Raitt",
+        "title": "Angel from Montgomery"
+      },
+      {
+        "artist": "Neil Young",
+        "title": "Old Man"
+      },
+      {
+        "artist": "Neil Young",
+        "title": "The Needle and the Damage Done"
+      },
+      {
+        "artist": "James Taylor",
+        "title": "Sweet Baby James"
+      },
+      {
+        "artist": "James Taylor",
+        "title": "Shower the People"
+      },
+      {
+        "artists": [
+          "Simon & Garfunkel",
+          "Simon and Garfunkel"
+        ],
+        "title": "America"
+      },
+      {
+        "artists": [
+          "Simon & Garfunkel",
+          "Simon and Garfunkel"
+        ],
+        "title": "The Boxer"
+      },
+      {
+        "artist": "Elton John",
+        "title": "Tiny Dancer"
+      },
+      {
+        "artist": "Elton John",
+        "title": "Rocket Man"
+      },
+      {
+        "artist": "Johnny Cash",
+        "title": "I Walk the Line"
+      },
+      {
+        "artist": "Johnny Cash",
+        "title": "Ring of Fire"
+      },
+      {
+        "artist": "Lucinda Williams",
+        "title": "Car Wheels on a Gravel Road"
+      },
+      {
+        "artist": "Lucinda Williams",
+        "title": "Drunken Angel"
+      },
+      {
+        "artist": "Bonnie Raitt",
+        "title": "I Can’t Make You Love Me"
+      },
+      {
+        "artist": "Bonnie Raitt",
+        "title": "Nick of Time"
+      },
+      {
+        "artist": "Nick Drake",
+        "title": "Pink Moon"
+      },
+      {
+        "artist": "Nick Drake",
+        "title": "Northern Sky"
+      },
+      {
+        "artist": "Jackson Browne",
+        "title": "The Pretender"
+      },
+      {
+        "artist": "John Gorka",
+        "title": "I Saw a Stranger with Your Hair"
+      },
+      {
+        "artist": "Ray LaMontagne",
+        "title": "Jolene"
+      },
+      {
+        "artist": "Norah Jones",
+        "title": "Don’t Know Why"
+      },
+      {
+        "artist": "James Taylor",
+        "title": "Mexico"
+      },
+      {
+        "artist": "James Taylor",
+        "title": "Your Smiling Face"
+      },
+      {
+        "artist": "Neil Young",
+        "title": "Southern Man"
+      },
+      {
+        "artist": "Fleetwood Mac",
+        "title": "Go Your Own Way",
+        "album": "Rumours"
+      },
+      {
+        "artist": "Fleetwood Mac",
+        "title": "Dreams",
+        "album": "Rumours"
+      },
+      {
+        "artist": "Elton John",
+        "title": "Bennie and the Jets"
+      },
+      {
+        "artist": "Fleetwood Mac",
+        "title": "The Chain"
+      },
+      {
+        "artist": "Fleetwood Mac",
+        "title": "Rhiannon"
+      },
+      {
+        "artist": "Bill Withers",
+        "title": "Lean on Me"
+      },
+      {
+        "artist": "Bill Withers",
+        "title": "Lovely Day"
+      },
+      {
+        "artist": "Bill Withers",
+        "title": "Ain't No Sunshine"
+      },
+      {
+        "artist": "Bill Withers",
+        "title": "Use Me"
+      },
+      {
+        "artist": "Bill Withers",
+        "title": "Just the Two of Us"
+      }
+    ]
+  },
+  {
+    "slug": "funk-disco-dancefloor",
+    "name": "Funk, Disco & Dancefloor",
+    "description": "A polished run of funk, disco, pop, and R&B records that keep the room moving.",
+    "tracks": [
+      {
+        "artist": "ABBA",
+        "title": "Dancing Queen"
+      },
+      {
+        "artist": "Michael Jackson",
+        "title": "Billie Jean"
+      },
+      {
+        "artist": "Michael Jackson",
+        "title": "Beat It"
+      },
+      {
+        "artist": "Michael Jackson",
+        "title": "Thriller"
+      },
+      {
+        "artist": "Cyndi Lauper",
+        "title": "Girls Just Want to Have Fun"
+      },
+      {
+        "artist": "Kenny Loggins",
+        "title": "Footloose"
+      },
+      {
+        "artist": "Mark Ronson",
+        "title": "Uptown Funk"
+      },
+      {
+        "artist": "Taylor Swift",
+        "title": "Shake It Off"
+      },
+      {
+        "artist": "The Black Eyed Peas",
+        "title": "I Gotta Feeling"
+      },
+      {
+        "artist": "Rick James",
+        "title": "Super Freak"
+      },
+      {
+        "artist": "Blondie",
+        "title": "Call Me"
+      },
+      {
+        "artist": "Bee Gees",
+        "title": "Stayin' Alive"
+      },
+      {
+        "artist": "Prince",
+        "title": "1999"
+      },
+      {
+        "artist": "Prince",
+        "title": "Kiss"
+      },
+      {
+        "artist": "Wham!",
+        "title": "Wake Me Up Before You Go-Go"
+      },
+      {
+        "artist": "The Pointer Sisters",
+        "title": "I'm So Excited"
+      },
+      {
+        "artist": "The Pointer Sisters",
+        "title": "Jump (For My Love)"
+      },
+      {
+        "artist": "Bananarama",
+        "title": "Venus"
+      },
+      {
+        "artist": "Dead or Alive",
+        "title": "You Spin Me Round"
+      },
+      {
+        "artist": "a-ha",
+        "title": "Take on Me"
+      },
+      {
+        "artist": "Tears For Fears",
+        "title": "Everybody Wants to Rule the World"
+      },
+      {
+        "artist": "Bon Jovi",
+        "title": "Livin' on a Prayer"
+      },
+      {
+        "artist": "Journey",
+        "title": "Don't Stop Believin'"
+      },
+      {
+        "artist": "Lady Gaga",
+        "title": "Just Dance"
+      },
+      {
+        "artist": "Lady Gaga",
+        "title": "Poker Face"
+      },
+      {
+        "artist": "Katy Perry",
+        "title": "Firework"
+      },
+      {
+        "artist": "Katy Perry",
+        "title": "Teenage Dream"
+      },
+      {
+        "artist": "Justin Timberlake",
+        "title": "Can’t Stop the Feeling!"
+      },
+      {
+        "artists": [
+          "The Black Eyed Peas",
+          "Black Eyed Peas"
+        ],
+        "title": "Boom Boom Pow"
+      },
+      {
+        "artists": [
+          "The Black Eyed Peas",
+          "Black Eyed Peas"
+        ],
+        "title": "Pump It"
+      },
+      {
+        "artist": "Madonna",
+        "title": "Like a Prayer"
+      },
+      {
+        "artist": "Blondie",
+        "title": "Heart of Glass"
+      },
+      {
+        "artist": "The B-52’s",
+        "title": "Love Shack"
+      },
+      {
+        "artist": "Queen",
+        "title": "Another One Bites the Dust"
+      },
+      {
+        "artists": [
+          "AC/DC",
+          "Ac_Dc"
+        ],
+        "title": "You Shook Me All Night Long"
+      },
+      {
+        "artist": "Aretha Franklin",
+        "title": "Respect"
+      },
+      {
+        "artist": "Aretha Franklin",
+        "title": "Natural Woman"
+      },
+      {
+        "artist": "Stevie Wonder",
+        "title": "Superstition"
+      },
+      {
+        "artist": "Stevie Wonder",
+        "title": "Sir Duke"
+      },
+      {
+        "artist": "Stevie Wonder",
+        "title": "Signed, Sealed, Delivered"
+      },
+      {
+        "artist": "Bill Withers",
+        "title": "Ain't No Sunshine"
+      },
+      {
+        "artist": "Bill Withers",
+        "title": "Lean on Me"
+      },
+      {
+        "artist": "Bill Withers",
+        "title": "Lovely Day"
+      },
+      {
+        "artist": "Bill Withers",
+        "title": "Use Me"
+      },
+      {
+        "artist": "Otis Redding",
+        "title": "The Dock of the Bay"
+      }
+    ]
+  },
+  {
+    "slug": "after-midnight",
+    "name": "After Midnight",
+    "description": "Mellow, soulful, reflective songs for headphones, low lights, and the quiet hours.",
+    "tracks": [
+      {
+        "artist": "James Taylor",
+        "title": "Fire and Rain"
+      },
+      {
+        "artist": "James Taylor",
+        "title": "You've Got a Friend"
+      },
+      {
+        "artist": "James Taylor",
+        "title": "Carolina in My Mind"
+      },
+      {
+        "artist": "Joni Mitchell",
+        "title": "California",
+        "album": "Blue"
+      },
+      {
+        "artist": "Simon & Garfunkel",
+        "title": "The Sound of Silence"
+      },
+      {
+        "artist": "Simon & Garfunkel",
+        "title": "Bridge over Troubled Water"
+      },
+      {
+        "artist": "Bob Dylan",
+        "title": "Tangled Up in Blue"
+      },
+      {
+        "artist": "Bob Dylan",
+        "title": "The Times They Are A-Changin'"
+      },
+      {
+        "artist": "Elton John",
+        "title": "Your Song"
+      },
+      {
+        "artist": "Johnny Cash",
+        "title": "Hurt",
+        "album": "American IV"
+      },
+      {
+        "artist": "Neil Young",
+        "title": "Heart of Gold",
+        "album": "Harvest"
+      },
+      {
+        "artist": "Bonnie Raitt",
+        "title": "Angel from Montgomery"
+      },
+      {
+        "artist": "Neil Young",
+        "title": "Old Man"
+      },
+      {
+        "artist": "Neil Young",
+        "title": "The Needle and the Damage Done"
+      },
+      {
+        "artist": "James Taylor",
+        "title": "Sweet Baby James"
+      },
+      {
+        "artist": "James Taylor",
+        "title": "Shower the People"
+      },
+      {
+        "artists": [
+          "Simon & Garfunkel",
+          "Simon and Garfunkel"
+        ],
+        "title": "America"
+      },
+      {
+        "artists": [
+          "Simon & Garfunkel",
+          "Simon and Garfunkel"
+        ],
+        "title": "The Boxer"
+      },
+      {
+        "artist": "Elton John",
+        "title": "Tiny Dancer"
+      },
+      {
+        "artist": "Elton John",
+        "title": "Rocket Man"
+      },
+      {
+        "artist": "Johnny Cash",
+        "title": "I Walk the Line"
+      },
+      {
+        "artist": "Johnny Cash",
+        "title": "Ring of Fire"
+      },
+      {
+        "artist": "Lucinda Williams",
+        "title": "Car Wheels on a Gravel Road"
+      },
+      {
+        "artist": "Lucinda Williams",
+        "title": "Drunken Angel"
+      },
+      {
+        "artist": "Bonnie Raitt",
+        "title": "I Can’t Make You Love Me"
+      },
+      {
+        "artist": "Bonnie Raitt",
+        "title": "Nick of Time"
+      },
+      {
+        "artist": "Nick Drake",
+        "title": "Pink Moon"
+      },
+      {
+        "artist": "Nick Drake",
+        "title": "Northern Sky"
+      },
+      {
+        "artist": "Jackson Browne",
+        "title": "The Pretender"
+      },
+      {
+        "artist": "John Gorka",
+        "title": "I Saw a Stranger with Your Hair"
+      },
+      {
+        "artist": "Ray LaMontagne",
+        "title": "Jolene"
+      },
+      {
+        "artist": "Norah Jones",
+        "title": "Don’t Know Why"
+      },
+      {
+        "artist": "James Taylor",
+        "title": "Mexico"
+      },
+      {
+        "artist": "James Taylor",
+        "title": "Your Smiling Face"
+      },
+      {
+        "artist": "Neil Young",
+        "title": "Southern Man"
+      },
+      {
+        "artist": "Bill Withers",
+        "title": "Ain't No Sunshine"
+      },
+      {
+        "artist": "Bill Withers",
+        "title": "Lean on Me"
+      },
+      {
+        "artist": "Bill Withers",
+        "title": "Lovely Day"
+      },
+      {
+        "artist": "Bill Withers",
+        "title": "Use Me"
+      },
+      {
+        "artist": "Bill Withers",
+        "title": "Just the Two of Us"
+      },
+      {
+        "artist": "Bill Withers",
+        "title": "Grandma’s Hands"
+      },
+      {
+        "artist": "Bill Withers",
+        "title": "Who Is He (And What Is He to You)"
+      },
+      {
+        "artist": "Fleetwood Mac",
+        "title": "Go Your Own Way",
+        "album": "Rumours"
+      },
+      {
+        "artist": "Fleetwood Mac",
+        "title": "Dreams",
+        "album": "Rumours"
+      },
+      {
+        "artist": "Elton John",
+        "title": "Bennie and the Jets"
+      }
+    ]
+  },
+  {
+    "slug": "shuffle-everything",
+    "name": "Shuffle Everything",
+    "description": "A database-driven shuffle across every currently available track; no giant static playlist required.",
+    "dynamic": "all"
   }
 ]
