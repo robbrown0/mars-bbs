@@ -74,8 +74,8 @@
   {
     "service": "music",
     "container": "mars-v2final-music",
-    "image": "sha256:4c2f1c16c020e81bc9db9b6ee22cf61cd27fbd3f2a7fbe5434ed70efcbab6761",
-    "tag": "mars-hotel-v2-service:ios-lockscreen-art-20261023",
+    "image": "sha256:79a678f524f0015c2eb7d8424a01c27816d261f65c23918099c47a42a1062ac0",
+    "tag": "mars-hotel-v2-service:playlist-audit-20261023",
     "user": "21012:21012",
     "running": true,
     "read_only": true
