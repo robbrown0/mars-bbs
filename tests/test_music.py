@@ -37,10 +37,13 @@ class MusicTests(unittest.TestCase):
         (self.unr01 / "Local Artist" / "Local Album").mkdir(parents=True)
         self.extra.mkdir()
         self.payload = b"ID3mars-audio-fixture"
+        self.cover = b"\xff\xd8\xff\xe0mars-cover-fixture"
         (self.nas01 / "Artist One" / "Album One" / "Track One.mp3").write_bytes(
             self.payload)
         (self.nas01 / "Artist One" / "Album One" / "Track Two.m4a").write_bytes(
             b"m4a-fixture")
+        (self.nas01 / "Artist One" / "Album One" / "cover.jpg").write_bytes(
+            self.cover)
         (self.unr01 / "Local Artist" / "Local Album" / "Local.flac").write_bytes(
             b"flac-fixture")
         (self.nas01 / "ignore.txt").write_text("not music", encoding="utf-8")
@@ -156,6 +159,9 @@ class MusicTests(unittest.TestCase):
         self.assertIn('id="queue-panel"', page)
         self.assertIn("/api/queue", page)
         self.assertIn("MediaMetadata", page)
+        self.assertIn("/api/artwork/", page)
+        self.assertIn('id="cover"', page)
+        self.assertIn("artwork:[{src:cover}]", page)
         self.assertIn("mediaSession.setActionHandler", page)
         self.assertIn("manifest.webmanifest", page)
         self.assertIn("audio.addEventListener('ended'", page)
@@ -293,6 +299,56 @@ class MusicTests(unittest.TestCase):
                 self.music.handle(self.request("admin_remove_source", {
                     "name": "nas01"}), (1, 29901, 29901))
 
+    def test_admin_confirms_and_removes_reviewed_album_artwork(self) -> None:
+        manager = dict(IDENTITY, capabilities=["music.play", "music.manage"])
+        track_id = int(self.music._search("Track One", 0, 10)["tracks"][0]["id"])
+        mbid = "123e4567-e89b-42d3-a456-426614174000"
+        imported = b"\x89PNG\r\n\x1a\nconfirmed-cover"
+        candidates = [{
+            "id": mbid, "title": "Album One", "artist": "Artist One",
+            "date": "1984", "type": "Album", "score": 100,
+        }]
+        with patch("marsv2.musicd.validate", return_value=manager), \
+                patch("marsv2.musicd.search_release_groups",
+                      return_value=candidates) as search, \
+                patch("marsv2.musicd.download_release_group_cover",
+                      return_value=("image/png", imported)) as download:
+            status = self.music.handle(self.request("admin_artwork_status", {
+                "track_id": track_id}), (1, 29901, 29901))
+            original_version = self.music.artwork_version(track_id)
+            found = self.music.handle(self.request("admin_artwork_search", {
+                "track_id": track_id, "artist": "Artist One", "album": "Album One",
+            }), (1, 29901, 29901))
+            saved = self.music.handle(self.request("admin_artwork_import", {
+                "track_id": track_id, "mbid": mbid, "confirm": "IMPORT",
+            }), (1, 29901, 29901))
+        self.assertEqual(status["source"], "folder")
+        self.assertEqual(status["bytes"], len(self.cover))
+        self.assertEqual(found["candidates"], candidates)
+        self.assertTrue(saved["saved"])
+        self.assertEqual(self.music.artwork(track_id), ("image/png", imported, "confirmed"))
+        self.assertNotEqual(self.music.artwork_version(track_id), original_version)
+        self.assertEqual(self.music.artwork_version(track_id),
+                         saved["sha256"][:16])
+        search.assert_called_once_with(
+            "Artist One", "Album One", self.music.artwork_user_agent)
+        download.assert_called_once_with(mbid, self.music.artwork_user_agent)
+
+        with patch("marsv2.musicd.validate", return_value=manager):
+            stats = self.music.handle(self.request("stats"), (1, 29901, 29901))
+            removed = self.music.handle(self.request("admin_artwork_remove", {
+                "track_id": track_id, "confirm": "REMOVE",
+            }), (1, 29901, 29901))
+        self.assertEqual(stats["artwork_overrides"], 1)
+        self.assertTrue(removed["removed"])
+        self.assertEqual(self.music.artwork(track_id),
+                         ("image/jpeg", self.cover, "folder"))
+
+        with patch("marsv2.musicd.validate", return_value=IDENTITY):
+            with self.assertRaisesRegex(RPCError, "music access denied"):
+                self.music.handle(self.request("admin_artwork_status", {
+                    "track_id": track_id}), (1, 29901, 29901))
+
     def test_browser_range_stream_uses_opaque_track_id(self) -> None:
         with patch("marsv2.musicd.validate", return_value=IDENTITY):
             rows = self.music.handle(self.request("search", {"query": "Track One",
@@ -323,6 +379,42 @@ class MusicTests(unittest.TestCase):
             self.assertEqual(response.getheader("Content-Range"),
                              f"bytes 3-6/{len(self.payload)}")
             self.assertEqual(body, self.payload[3:7])
+        finally:
+            server.shutdown()
+            server.server_close()
+
+    def test_track_artwork_endpoint_is_authenticated_and_path_free(self) -> None:
+        track_id = int(self.music._search("Track One", 0, 10)["tracks"][0]["id"])
+        with patch("marsv2.musicd.validate", return_value=IDENTITY):
+            pair = self.music.handle(self.request("pair"), (1, 29901, 29901))
+        browser = self.redeem(str(pair["url"]))
+        MusicHTTP.music = self.music
+        server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), MusicHTTP)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            connection = http.client.HTTPConnection(
+                "127.0.0.1", server.server_port, timeout=3)
+            connection.request("GET", f"/marsamp/api/artwork/{track_id}")
+            denied = connection.getresponse()
+            denied.read()
+            connection.close()
+            self.assertEqual(denied.status, 401)
+
+            with patch("marsv2.musicd.request",
+                       return_value={"ok": True, "data": IDENTITY}):
+                connection = http.client.HTTPConnection(
+                    "127.0.0.1", server.server_port, timeout=3)
+                connection.request("GET", f"/marsamp/api/artwork/{track_id}", headers={
+                    "Cookie": "marsamp_session=" + browser,
+                })
+                response = connection.getresponse()
+                payload = response.read()
+                connection.close()
+            self.assertEqual(response.status, 200)
+            self.assertEqual(response.getheader("Content-Type"), "image/jpeg")
+            self.assertEqual(payload, self.cover)
+            self.assertNotIn(self.temporary.name.encode(), payload)
         finally:
             server.shutdown()
             server.server_close()

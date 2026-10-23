@@ -19,10 +19,15 @@ import sqlite3
 import threading
 import time
 import unicodedata
+from collections import OrderedDict
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import quote, unquote, urlparse
 
+from .artwork import (
+    ArtworkError, download_release_group_cover, local_artwork,
+    search_release_groups,
+)
 from .db import connect
 from .identity import validate
 from .rpc import RPCError, request, serve
@@ -35,6 +40,10 @@ BROWSER_SECONDS = 8 * 60 * 60
 MAX_RESULTS = 250
 PLAY_MODES = {"sequential", "shuffle"}
 DYNAMIC_ALL = "all"
+ARTWORK_CACHE_BYTES = 32 * 1024 * 1024
+DEFAULT_ARTWORK_USER_AGENT = (
+    "MarsHotelBBS/1.0 (https://github.com/robbrown0/mars-bbs)"
+)
 TOKEN_RE = re.compile(r"[A-Za-z0-9_-]{43,86}\Z")
 SUPPORTED = {
     ".aac": "audio/aac",
@@ -98,6 +107,18 @@ CREATE TABLE IF NOT EXISTS playlist_tracks (
 );
 CREATE INDEX IF NOT EXISTS playlist_tracks_order
   ON playlist_tracks(playlist_slug,position);
+CREATE TABLE IF NOT EXISTS album_artwork (
+  artwork_key TEXT PRIMARY KEY,
+  artist TEXT NOT NULL,
+  album TEXT NOT NULL,
+  provider TEXT NOT NULL,
+  external_id TEXT NOT NULL,
+  mime_type TEXT NOT NULL,
+  image BLOB NOT NULL,
+  image_sha256 TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  created_by TEXT NOT NULL
+);
 """
 
 
@@ -164,6 +185,13 @@ class Music:
         self.scan_running = False
         self.last_scan = 0
         self.last_scan_result: dict[str, object] = {"tracks": 0, "errors": []}
+        self.artwork_user_agent = os.environ.get(
+            "MARSAMP_ARTWORK_USER_AGENT", DEFAULT_ARTWORK_USER_AGENT)[:240]
+        self.artwork_cache: OrderedDict[
+            tuple[int, int], tuple[str, bytes, str]
+        ] = OrderedDict()
+        self.artwork_cache_bytes = 0
+        self.artwork_search_at = 0.0
         self.playlist_definitions = self._load_playlists(playlists_file)
         self.dynamic_playlists = {
             str(item["slug"]): str(item.get("dynamic", ""))
@@ -574,6 +602,135 @@ class Music:
             raise RPCError("track changed; catalog refresh required")
         return row, candidate
 
+    @staticmethod
+    def _artwork_key(row: sqlite3.Row | dict[str, object]) -> str:
+        artist = _music_key(str(row["artist"]))
+        album = _music_key(str(row["album"]))
+        return artist + "\x1f" + album if artist and album else ""
+
+    def _cache_artwork(self, key: tuple[int, int], value: tuple[str, bytes, str]) -> None:
+        size = len(value[1])
+        if size > ARTWORK_CACHE_BYTES:
+            return
+        with self.lock:
+            previous = self.artwork_cache.pop(key, None)
+            if previous is not None:
+                self.artwork_cache_bytes -= len(previous[1])
+            while self.artwork_cache and self.artwork_cache_bytes + size > ARTWORK_CACHE_BYTES:
+                _, removed = self.artwork_cache.popitem(last=False)
+                self.artwork_cache_bytes -= len(removed[1])
+            self.artwork_cache[key] = value
+            self.artwork_cache_bytes += size
+
+    def artwork(self, track_id: int) -> tuple[str, bytes, str]:
+        """Return confirmed, embedded, folder, or branded fallback artwork."""
+        row, filename = self._track_file(track_id)
+        artwork_key = self._artwork_key(row)
+        if artwork_key:
+            with self.lock:
+                confirmed = self.db.execute(
+                    "SELECT mime_type,image FROM album_artwork WHERE artwork_key=?",
+                    (artwork_key,),
+                ).fetchone()
+            if confirmed is not None:
+                return str(confirmed["mime_type"]), bytes(confirmed["image"]), "confirmed"
+
+        cache_key = (track_id, int(row["modified_ns"]))
+        with self.lock:
+            cached = self.artwork_cache.pop(cache_key, None)
+            if cached is not None:
+                self.artwork_cache[cache_key] = cached
+                return cached
+        found = local_artwork(filename)
+        value = found if found is not None else (
+            "image/png", _artwork_png(512), "marsamp",
+        )
+        self._cache_artwork(cache_key, value)
+        return value
+
+    def artwork_status(self, track_id: int) -> dict[str, object]:
+        track = self._public_track(track_id)
+        mime_type, data, source = self.artwork(track_id)
+        return {"track": track, "source": source, "mime_type": mime_type,
+                "bytes": len(data), "confirmed": source == "confirmed"}
+
+    def artwork_version(self, track_id: int) -> str:
+        """Return an opaque change token without exposing file metadata."""
+        with self.lock:
+            row = self.db.execute(
+                "SELECT artist,album,modified_ns FROM tracks WHERE id=? AND available=1",
+                (track_id,),
+            ).fetchone()
+            if row is None:
+                raise RPCError("track unavailable")
+            artwork_key = self._artwork_key(row)
+            confirmed = (self.db.execute(
+                "SELECT image_sha256 FROM album_artwork WHERE artwork_key=?",
+                (artwork_key,),
+            ).fetchone() if artwork_key else None)
+        if confirmed is not None:
+            return str(confirmed["image_sha256"])[:16]
+        seed = f"{track_id}:{int(row['modified_ns'])}".encode("ascii")
+        return hashlib.sha256(seed).hexdigest()[:16]
+
+    def admin_artwork_search(self, track_id: int, artist: str,
+                             album: str) -> dict[str, object]:
+        track = self._public_track(track_id)
+        if not self._artwork_key(track):
+            raise RPCError("this track needs both artist and album information")
+        # MusicBrainz asks clients sharing an IP to remain at or below one
+        # request per second. This path is administrator-triggered only.
+        with self.lock:
+            wait_for = max(0.0, 1.05 - (time.monotonic() - self.artwork_search_at))
+        if wait_for:
+            time.sleep(wait_for)
+        with self.lock:
+            self.artwork_search_at = time.monotonic()
+        try:
+            candidates = search_release_groups(artist, album, self.artwork_user_agent)
+        except ArtworkError as exc:
+            raise RPCError(str(exc)) from exc
+        return {"track": track, "artist": artist, "album": album,
+                "candidates": candidates}
+
+    def admin_artwork_import(self, identity: dict[str, object], track_id: int,
+                             mbid: str) -> dict[str, object]:
+        track = self._public_track(track_id)
+        artwork_key = self._artwork_key(track)
+        if not artwork_key:
+            raise RPCError("this track needs both artist and album information")
+        try:
+            mime_type, data = download_release_group_cover(mbid, self.artwork_user_agent)
+        except ArtworkError as exc:
+            raise RPCError(str(exc)) from exc
+        digest = hashlib.sha256(data).hexdigest()
+        with self.lock, self.db:
+            self.db.execute(
+                "INSERT INTO album_artwork(artwork_key,artist,album,provider,external_id,"
+                "mime_type,image,image_sha256,created_at,created_by) VALUES(?,?,?,?,?,?,?,?,?,?) "
+                "ON CONFLICT(artwork_key) DO UPDATE SET provider=excluded.provider,"
+                "external_id=excluded.external_id,mime_type=excluded.mime_type,"
+                "image=excluded.image,image_sha256=excluded.image_sha256,"
+                "created_at=excluded.created_at,created_by=excluded.created_by",
+                (artwork_key, str(track["artist"]), str(track["album"]),
+                 "MusicBrainz release group / Cover Art Archive", mbid, mime_type, data, digest,
+                 int(time.time()), str(identity["userid"])),
+            )
+        return {"saved": True, "track": track, "source": "confirmed",
+                "mime_type": mime_type, "bytes": len(data), "sha256": digest}
+
+    def admin_artwork_remove(self, track_id: int) -> dict[str, object]:
+        track = self._public_track(track_id)
+        artwork_key = self._artwork_key(track)
+        if not artwork_key:
+            raise RPCError("this track has no album artwork override")
+        with self.lock, self.db:
+            cursor = self.db.execute(
+                "DELETE FROM album_artwork WHERE artwork_key=?", (artwork_key,))
+        if cursor.rowcount != 1:
+            raise RPCError("this album has no confirmed artwork override")
+        return {"removed": True, "track": track}
+
     def _new_pair(self, ident: dict[str, object], bbs_token: str) -> dict[str, object]:
         raw = secrets.token_urlsafe(32)
         digest = hashlib.sha256(raw.encode("ascii")).hexdigest()
@@ -663,6 +820,7 @@ class Music:
         if track_id:
             try:
                 state["track"] = self._public_track(track_id)
+                state["track"]["artwork_version"] = self.artwork_version(track_id)
                 state["stream"] = f"{self.base_path}/audio/{track_id}"
             except RPCError:
                 state.update({"action": "stop", "track_id": 0})
@@ -933,9 +1091,13 @@ class Music:
             raise RPCError("invalid data")
         if op == "stats":
             health = self.handle({"op": "health"}, peer)
+            with self.lock:
+                artwork_overrides = int(self.db.execute(
+                    "SELECT count(*) FROM album_artwork").fetchone()[0])
             health.update({"sources": list(self._all_sources()), "last_scan": self.last_scan,
                            "last_scan_result": self.last_scan_result,
-                           "compact_player_lines": self.player_layout()})
+                           "compact_player_lines": self.player_layout(),
+                           "artwork_overrides": artwork_overrides})
             return health
         if op == "admin_player_layout":
             self._require(ident, MANAGE_CAPABILITY)
@@ -957,6 +1119,32 @@ class Music:
             self._require(ident, MANAGE_CAPABILITY)
             name = text(data.get("name"), "source name", 32).strip().casefold()
             return self.remove_source(name)
+        if op == "admin_artwork_status":
+            self._require(ident, MANAGE_CAPABILITY)
+            if set(data) != {"track_id"}:
+                raise RPCError("invalid artwork status request")
+            return self.artwork_status(integer(data["track_id"], "track id"))
+        if op == "admin_artwork_search":
+            self._require(ident, MANAGE_CAPABILITY)
+            if set(data) != {"track_id", "artist", "album"}:
+                raise RPCError("invalid artwork search request")
+            track_id = integer(data["track_id"], "track id")
+            artist = text(data["artist"], "artwork artist", 160, 1).strip()
+            album = text(data["album"], "artwork album", 160, 1).strip()
+            return self.admin_artwork_search(track_id, artist, album)
+        if op == "admin_artwork_import":
+            self._require(ident, MANAGE_CAPABILITY)
+            if set(data) != {"track_id", "mbid", "confirm"} \
+                    or data.get("confirm") != "IMPORT":
+                raise RPCError("invalid artwork import confirmation")
+            track_id = integer(data["track_id"], "track id")
+            mbid = text(data["mbid"], "MusicBrainz release", 36, 36).casefold()
+            return self.admin_artwork_import(ident, track_id, mbid)
+        if op == "admin_artwork_remove":
+            self._require(ident, MANAGE_CAPABILITY)
+            if set(data) != {"track_id", "confirm"} or data.get("confirm") != "REMOVE":
+                raise RPCError("invalid artwork removal confirmation")
+            return self.admin_artwork_remove(integer(data["track_id"], "track id"))
         if op == "search":
             query = text(data.get("query", ""), "search", 80).strip()
             offset = integer(data.get("offset", 0), "offset", 0, 10_000_000)
@@ -1077,7 +1265,7 @@ main{width:min(100%,720px);margin:auto;border:1px solid #3b4d7a;border-radius:24
 background:linear-gradient(155deg,rgba(25,33,60,.98),rgba(10,12,25,.98));box-shadow:0 24px 80px #000b,0 0 0 1px #47a9ff20 inset}
 header{display:flex;align-items:center;justify-content:space-between;padding:18px 20px;border-bottom:1px solid var(--line)}
 .brand{color:var(--blue);font-weight:900;letter-spacing:.16em;font-size:1.18rem}.live{color:var(--green);font-size:.72rem;letter-spacing:.12em;border:1px solid #39e69d55;border-radius:999px;padding:6px 10px}
-.stage{display:grid;grid-template-columns:190px 1fr;gap:24px;padding:24px}.art{aspect-ratio:1;border-radius:20px;background:#0c1020 url('artwork-512.png') center/cover no-repeat;box-shadow:0 14px 34px #0009,0 0 22px #2d9cff35;border:1px solid #5870a4}
+.stage{display:grid;grid-template-columns:190px 1fr;gap:24px;padding:24px}.art{aspect-ratio:1;border-radius:20px;background:#0c1020;box-shadow:0 14px 34px #0009,0 0 22px #2d9cff35;border:1px solid #5870a4;overflow:hidden}.art img{display:block;width:100%;height:100%;object-fit:cover}
 .now{min-width:0;display:flex;flex-direction:column;justify-content:center}.eyebrow{color:var(--green);letter-spacing:.14em;font-size:.72rem;margin-bottom:10px}.title{font:800 clamp(1.35rem,4vw,2.2rem)/1.12 system-ui,sans-serif;overflow-wrap:anywhere}.artist{margin-top:9px;color:#cbd4e9;font:600 1rem system-ui,sans-serif}.album{margin-top:5px;color:var(--muted);font:.88rem system-ui,sans-serif}
 .timeline{padding:0 24px 6px}.time-row{display:flex;align-items:center;gap:12px;color:var(--muted);font-size:.75rem}.time-row output{width:46px}.time-row output:last-child{text-align:right}input[type=range]{width:100%;accent-color:var(--green)}
 .meter{height:36px;display:flex;gap:4px;align-items:end;margin:10px 0}.meter i{flex:1;max-width:18px;background:linear-gradient(var(--green),var(--blue));height:12%;border-radius:3px 3px 0 0;transition:height .2s}
@@ -1089,7 +1277,7 @@ details{border-top:1px solid var(--line);background:#0b0f1d}summary{cursor:point
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style></head><body><main>
 <header><div class="brand">MARSAMP</div><div class="live">● SECURE AUDIO LINK</div></header>
-<section class="stage"><div class="art" role="img" aria-label="MarsAmp artwork"></div><div class="now">
+<section class="stage"><div class="art"><img id="cover" src="artwork-512.png" alt="Current album artwork"></div><div class="now">
 <div class="eyebrow">NOW TRANSMITTING</div><div id="title" class="title">Waiting for a selection…</div>
 <div id="artist" class="artist">The Mars Hotel BBS</div><div id="album" class="album">Authenticated private player</div>
 <div class="meter" id="meter" aria-hidden="true"></div></div></section>
@@ -1114,7 +1302,8 @@ const artistEl=document.getElementById('artist'),albumEl=document.getElementById
 const seek=document.getElementById('seek'),elapsed=document.getElementById('elapsed');
 const durationEl=document.getElementById('duration'),queueEl=document.getElementById('queue');
 const queueSummary=document.getElementById('queue-summary'),queueMeta=document.getElementById('queue-meta');
-let enabled=false,serial=-1,currentTrack=null,serverAction='stop';
+const coverEl=document.getElementById('cover');coverEl.onerror=()=>{if(coverEl.src!==ART512)coverEl.src=ART512};
+let enabled=false,serial=-1,currentTrack=null,serverAction='stop',metadataKey='';
 for(let i=0;i<18;i++)meter.appendChild(document.createElement('i'));
 const text=value=>String(value||'').replace(/[<>]/g,'');
 function clock(value){if(!Number.isFinite(value))return '0:00';let seconds=Math.max(0,Math.floor(value));return Math.floor(seconds/60)+':'+String(seconds%60).padStart(2,'0')}
@@ -1122,10 +1311,10 @@ function bars(on){[...meter.children].forEach((bar,i)=>bar.style.height=on?(18+(
 function needsTap(){enabled=false;enable.classList.add('attention');hint.textContent='Your browser blocked automatic audio. Tap PLAY once.'}
 function audioReady(){enabled=true;enable.classList.remove('attention');hint.textContent='Audio enabled. MarsAmp will continue through the current queue.'}
 async function beginPlayback(){if(!audio.src){hint.textContent='Choose a song in the BBS or queue first.';return}try{await audio.play();audioReady()}catch(error){needsTap()}}
-function sessionEnded(){audio.pause();audio.removeAttribute('src');audio.load();titleEl.textContent='Session ended';artistEl.textContent='Pair MarsAmp again from the BBS';albumEl.textContent='';hint.textContent='Playback authorization ended.';bars(false);setMediaState('none')}
+function sessionEnded(){audio.pause();audio.removeAttribute('src');audio.load();metadataKey='';titleEl.textContent='Session ended';artistEl.textContent='Pair MarsAmp again from the BBS';albumEl.textContent='';hint.textContent='Playback authorization ended.';bars(false);setMediaState('none')}
 function setMediaState(value){if('mediaSession' in navigator){try{navigator.mediaSession.playbackState=value}catch(error){}}}
-function updateMetadata(track){if(!track)return;currentTrack=track;const song=text(track.title)||'Untitled';const artist=text(track.artist)||'The Mars Hotel';const album=text(track.album)||'MarsAmp';document.title=song+' • MarsAmp';
-if('mediaSession' in navigator&&window.MediaMetadata){navigator.mediaSession.metadata=new MediaMetadata({title:song,artist:artist,album:album,artwork:[{src:ART192,sizes:'192x192',type:'image/png'},{src:ART512,sizes:'512x512',type:'image/png'}]})}}
+function updateMetadata(track){if(!track)return;currentTrack=track;const key=String(track.id)+':'+String(track.artwork_version||'');if(key===metadataKey)return;metadataKey=key;const song=text(track.title)||'Untitled';const artist=text(track.artist)||'The Mars Hotel';const album=text(track.album)||'MarsAmp';const coverURL=new URL(BASE+'/api/artwork/'+encodeURIComponent(track.id),location.origin);coverURL.searchParams.set('v',String(track.artwork_version||'1'));const cover=coverURL.href;document.title=song+' • MarsAmp';coverEl.src=cover;
+if('mediaSession' in navigator&&window.MediaMetadata){navigator.mediaSession.metadata=new MediaMetadata({title:song,artist:artist,album:album,artwork:[{src:cover}]})}}
 function updatePosition(){elapsed.value=clock(audio.currentTime);durationEl.value=clock(audio.duration);seek.value=Number.isFinite(audio.duration)&&audio.duration>0?Math.round(audio.currentTime/audio.duration*1000):0;
 if('mediaSession' in navigator&&Number.isFinite(audio.duration)&&audio.duration>0){try{navigator.mediaSession.setPositionState({duration:audio.duration,playbackRate:audio.playbackRate,position:Math.min(audio.currentTime,audio.duration)})}catch(error){}}}
 function queueRow(track,index,current=false){const item=document.createElement('li');if(current)item.className='current';const number=document.createElement('div');number.className='number';number.textContent=current?'▶':String(index).padStart(2,'0');const copy=document.createElement('div');const strong=document.createElement('strong');strong.textContent=text(track.title)||'Untitled';const detail=document.createElement('span');detail.textContent=[text(track.artist),text(track.album)].filter(Boolean).join(' · ');copy.append(strong,detail);item.append(number,copy);return item}
@@ -1250,6 +1439,10 @@ class MusicHTTP(BaseHTTPRequestHandler):
             if path == "/api/queue":
                 self._json(self.music.queue_view(int(ident["account_id"])))
                 return
+            artwork = re.fullmatch(r"/api/artwork/([1-9][0-9]{0,9})", path)
+            if artwork:
+                self._track_artwork(integer(int(artwork.group(1)), "track id"), head=False)
+                return
             match = re.fullmatch(r"/audio/([1-9][0-9]{0,9})", path)
             if match:
                 self._stream(integer(int(match.group(1)), "track id"), head=False)
@@ -1263,6 +1456,10 @@ class MusicHTTP(BaseHTTPRequestHandler):
         path = self._path()
         try:
             self._identity()
+            artwork = re.fullmatch(r"/api/artwork/([1-9][0-9]{0,9})", path or "")
+            if artwork:
+                self._track_artwork(integer(int(artwork.group(1)), "track id"), head=True)
+                return
             match = re.fullmatch(r"/audio/([1-9][0-9]{0,9})", path or "")
             if match:
                 self._stream(integer(int(match.group(1)), "track id"), head=True)
@@ -1297,6 +1494,12 @@ class MusicHTTP(BaseHTTPRequestHandler):
             self._json(result)
         except RPCError as exc:
             self._json({"error": str(exc)}, 401)
+
+    def _track_artwork(self, track_id: int, head: bool) -> None:
+        mime_type, payload, _source = self.music.artwork(track_id)
+        self._headers(200, mime_type, len(payload))
+        if not head:
+            self.wfile.write(payload)
 
     def _stream(self, track_id: int, head: bool) -> None:
         row, filename = self.music._track_file(track_id)

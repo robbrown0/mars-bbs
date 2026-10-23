@@ -3769,6 +3769,165 @@ def _admin_health(token: str) -> None:
                  "\n".join(lines))
 
 
+def _admin_marsamp_artwork_track(token: str, track: dict[str, object]) -> str:
+    """Review local art and optionally confirm a MusicBrainz release cover."""
+    track_id = int(track["id"])
+    notice = ""
+    while True:
+        try:
+            status = call("music", "admin_artwork_status", {"track_id": track_id}, token,
+                          timeout=12.0)
+        except (OSError, RPCError) as exc:
+            return "Artwork check failed: " + safe_text(exc)
+        source = safe_text(status.get("source", "marsamp"))
+        source_label = {
+            "confirmed": "ADMIN-CONFIRMED WEB COVER",
+            "embedded": "EMBEDDED IN AUDIO FILE",
+            "folder": "ALBUM-FOLDER IMAGE",
+            "marsamp": "MARSAMP FALLBACK",
+        }.get(source, source.upper())
+        heading("MARSAMP COVER ART", "Review and confirm artwork without changing NAS files")
+        print("\nTitle:  " + safe_text(track.get("title", "")))
+        print("Artist: " + safe_text(track.get("artist", "")))
+        print("Album:  " + safe_text(track.get("album", "")))
+        print("Source: " + source_label)
+        print(f"Size:   {int(status.get('bytes', 0)):,} bytes")
+        if notice:
+            print(styled("\n" + notice, YELLOW))
+        print("\n[S] Search MusicBrainz / Cover Art Archive")
+        if status.get("confirmed"):
+            print("[D] Delete confirmed cover and return to local artwork")
+        print("[X] Return to artwork catalog search")
+        choice = key_input("Cover art> ")
+        if choice in ("x", "q"):
+            return notice
+        if choice == "d" and status.get("confirmed"):
+            answer = input("Type REMOVE to delete this album's confirmed cover: ").strip()
+            if answer != "REMOVE":
+                notice = "Confirmed cover unchanged."
+                continue
+            try:
+                call("music", "admin_artwork_remove", {
+                    "track_id": track_id, "confirm": "REMOVE"}, token)
+                notice = "Confirmed cover removed; local embedded or folder art is active."
+            except (OSError, RPCError) as exc:
+                notice = "Removal rejected: " + safe_text(exc)
+            continue
+        if choice != "s":
+            continue
+        default_artist = safe_text(track.get("artist", ""))[:160]
+        default_album = safe_text(track.get("album", ""))[:160]
+        artist = input(f"Artist search [{default_artist}]: ").strip() or default_artist
+        album = input(f"Album search [{default_album}]: ").strip() or default_album
+        if not artist or not album:
+            notice = "Artist and album are required for a reviewed match."
+            continue
+        try:
+            result = call("music", "admin_artwork_search", {
+                "track_id": track_id, "artist": artist, "album": album,
+            }, token, timeout=12.0)
+        except (OSError, RPCError) as exc:
+            notice = "Search failed: " + safe_text(exc)
+            continue
+        candidates = list(result.get("candidates", []))
+        if not candidates:
+            notice = "No MusicBrainz release with confirmed front artwork matched."
+            continue
+        cursor = 0
+        while True:
+            heading("CONFIRM ALBUM COVER",
+                    "Choose the exact release; nothing is imported until confirmation",
+                    f"{len(candidates)} MATCHES")
+            print(styled(f"{'':4}{'RELEASE GROUP':38} {'DATE':10} TYPE", BOLD))
+            for position, candidate in enumerate(candidates):
+                date = safe_text(candidate.get("date", ""))[:10]
+                release_type = safe_text(candidate.get("type", ""))[:12]
+                line = (f" {position + 1:2}. "
+                        f"{clip(candidate.get('title', ''), 38):38} {date:10} {release_type}")
+                print(styled(clip(line, width()), REVERSE) if position == cursor else
+                      clip(line, width()))
+                if position == cursor:
+                    print(styled("     " + clip(candidate.get("artist", ""),
+                                                  max(12, width() - 5)), DIM))
+            print("\n[↑/↓] move  [Enter] review/import  [X] cancel")
+            selected_choice = key_input("Release> ")
+            if selected_choice in ("x", "q"):
+                notice = "Web artwork search cancelled."
+                break
+            if selected_choice in ("j", "k", "[", "]"):
+                cursor = _move_cursor(selected_choice, cursor, candidates)
+                continue
+            if selected_choice != "":
+                continue
+            selected = candidates[cursor]
+            heading("CONFIRM COVER IMPORT", "The 1200px front cover will be cached locally")
+            print("\nLibrary album: " + default_artist + " — " + default_album)
+            print("Web release:   " + safe_text(selected.get("artist", "")) +
+                  " — " + safe_text(selected.get("title", "")))
+            print("Release date:  " + safe_text(selected.get("date", "")))
+            print("Release type:  " + safe_text(selected.get("type", "")))
+            print("MusicBrainz release-group ID: " + safe_text(selected.get("id", "")))
+            answer = input("\nType IMPORT to use this cover for the library album: ").strip()
+            if answer != "IMPORT":
+                notice = "Cover import cancelled."
+                continue
+            try:
+                saved = call("music", "admin_artwork_import", {
+                    "track_id": track_id, "mbid": selected["id"], "confirm": "IMPORT",
+                }, token, timeout=15.0)
+                notice = ("Confirmed cover saved locally (" +
+                          f"{int(saved.get('bytes', 0)):,} bytes).")
+                break
+            except (OSError, RPCError) as exc:
+                notice = "Import failed: " + safe_text(exc)
+
+
+def _admin_marsamp_artwork(token: str) -> None:
+    """Find a library album and manage its confirmed cover artwork."""
+    query = ""
+    notice = ""
+    while True:
+        heading("MARSAMP ARTWORK LIBRARY",
+                "Embedded and folder art are automatic; web covers require confirmation")
+        if notice:
+            print(styled("\n" + notice, YELLOW))
+        value = input("\nArtist, album, or song (blank returns): ").strip()
+        if not value:
+            return
+        query = value[:80]
+        try:
+            tracks = list(call("music", "search", {
+                "query": query, "offset": 0, "limit": 40}, token).get("tracks", []))
+        except (OSError, RPCError) as exc:
+            notice = "Catalog search failed: " + safe_text(exc)
+            continue
+        if not tracks:
+            notice = "No catalog tracks matched that search."
+            continue
+        cursor = 0
+        while True:
+            heading("SELECT ALBUM FOR ARTWORK", "Enter opens artwork review",
+                    f"{len(tracks)} RESULTS")
+            start, end = page_window(tracks, cursor)
+            for position in range(start, end):
+                track = tracks[position]
+                line = (f"{position + 1:3}. " + safe_text(track.get("artist", "")) +
+                        " — " + safe_text(track.get("album", "")) +
+                        " — " + safe_text(track.get("title", "")))
+                print(styled(clip(line, width()), REVERSE) if position == cursor else
+                      clip(line, width()))
+            print("\n[↑/↓] move  [Enter] review  [F] new search  [X] return")
+            choice = key_input("Artwork> ")
+            if choice in ("x", "q"):
+                return
+            if choice == "f":
+                break
+            if choice in ("j", "k", "[", "]"):
+                cursor = _move_cursor(choice, cursor, tracks)
+            elif choice == "":
+                notice = _admin_marsamp_artwork_track(token, tracks[cursor])
+
+
 def _admin_marsamp(token: str) -> None:
     """Manage catalog sources and the site-wide compact player layout."""
     global _mini_poll_at
@@ -3786,6 +3945,7 @@ def _admin_marsamp(token: str) -> None:
         heading("MARSAMP ADMINISTRATION", "Catalog status and source maintenance",
                 "SCANNING" if stats.get("scan_running") else "READY")
         print(f"\n  Indexed tracks: {int(stats.get('tracks', 0))}")
+        print(f"  Confirmed covers: {int(stats.get('artwork_overrides', 0))}")
         layout = 4 if stats.get("compact_player_lines") == 4 else 3
         print(f"  Compact player: {layout} lines")
         last_scan = int(stats.get("last_scan", 0))
@@ -3817,6 +3977,7 @@ def _admin_marsamp(token: str) -> None:
         if notice:
             print(styled("\n" + notice, YELLOW))
         print("\n[↑/↓] move  [A] add location  [D] remove selected  [R] rescan  [X] return")
+        print("[C] Cover artwork: review local art or confirm a web match")
         print(f"[L] Compact player: switch to {7 - layout} lines")
         choice = key_input("MarsAmp admin> ")
         if choice in ("x", "q"):
@@ -3830,6 +3991,8 @@ def _admin_marsamp(token: str) -> None:
                 notice = f"Compact player set to {result['compact_player_lines']} lines; applies on Lobby redraw."
             except (OSError, RPCError) as exc:
                 notice = "Request rejected: " + safe_text(exc)
+        elif choice == "c":
+            _admin_marsamp_artwork(token)
         elif choice == "a":
             name = input("Short source name (lowercase, no spaces; blank cancels): ").strip()
             if not name:
