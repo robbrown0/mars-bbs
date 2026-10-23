@@ -66,3 +66,18 @@ Validated on 2026-10-23 for Monitor alerts and administration spacing:
 Monitor subscriptions are per SSH login, as before. Banners use the terminal's
 first row with cursor save/restore and a terminal bell. Foreground loops repaint
 the notice for 12 seconds; screens retain their own input handling.
+
+
+Validated on 2026-10-23 for compose-screen flicker:
+
+- 56 unit tests passed, plus the recovered editor/key-decoder model
+- a real PTY produced no output during an idle compose interval spanning
+  multiple resize-poll ticks
+- typing updated changed rows without clearing the screen or repainting the
+  heading; cursor-only movement did not erase or repaint text rows
+- resizing retained the message and refreshed the frame for the new dimensions
+- a Monitor banner preserved the composed message and the send confirmation
+
+The shared mail/board editor keeps its periodic resize check, but redraws only
+when its state changes. Changed content rows are updated in place. A complete
+clear is used only for the initial frame and a terminal resize.

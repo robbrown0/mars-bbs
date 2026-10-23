@@ -992,7 +992,8 @@ def scan_new_posts(token: str) -> None:
 def _draw_mail_editor(recipient: str, subject: str, buffer: EditorBuffer,
                       scroll: int, status: str, mode: str, editor_title: str,
                       destination_label: str, submit_label: str,
-                      allow_draft: bool) -> tuple[int, int, int, int]:
+                      allow_draft: bool, previous_frame: list[str] | None = None
+                      ) -> tuple[int, int, int, int]:
     size = shutil.get_terminal_size((80, 24))
     columns = max(20, min(120, size.columns))
     screen_lines = max(12, size.lines)
@@ -1014,23 +1015,32 @@ def _draw_mail_editor(recipient: str, subject: str, buffer: EditorBuffer,
         scroll = cursor_row - body_height + 1
     scroll = max(0, min(scroll, max(0, len(visual) - body_height)))
 
-    sys.stdout.write("\033[?25l\033[2J\033[H")
-    sys.stdout.write(styled(clip(editor_title, columns), BOLD, CYAN) + "\r\n")
-    sys.stdout.write(styled(separator, DIM) + "\r\n")
-    sys.stdout.write(clip(f"{destination_label + ':':8}" + safe_text(recipient), columns)
-                     + "\r\n")
-    sys.stdout.write(clip("Subject: " + safe_text(subject), columns) + "\r\n")
-    sys.stdout.write(styled(separator, DIM) + "\r\n")
+    lines = [styled(clip(editor_title, columns), BOLD, CYAN),
+             styled(separator, DIM),
+             clip(f"{destination_label + ':':8}" + safe_text(recipient), columns),
+             clip("Subject: " + safe_text(subject), columns),
+             styled(separator, DIM)]
     for index in range(scroll, scroll + body_height):
         if index < len(visual):
             row = visual[index]
-            sys.stdout.write(safe_text(buffer.text[row.start:row.end]) + "\r\n")
+            lines.append(safe_text(buffer.text[row.start:row.end]))
         else:
-            sys.stdout.write("\r\n")
-    sys.stdout.write(styled(separator, DIM) + "\r\n")
-    for help_line in help_lines:
-        sys.stdout.write(clip(help_line, columns) + "\r\n")
-    sys.stdout.write(clip(status, columns))
+            lines.append("")
+    lines.append(styled(separator, DIM))
+    lines.extend(clip(line, columns) for line in help_lines)
+    lines.append(clip(status, columns))
+    previous = previous_frame if previous_frame is not None else []
+    updates: list[str] = []
+    if not previous:
+        updates.append("\033[?25l\033[2J\033[H")
+    for row_number, line in enumerate(lines, 1):
+        if row_number > len(previous) or previous[row_number - 1] != line:
+            if not updates:
+                updates.append("\033[?25l")
+            updates.append(f"\033[{row_number};1H\033[K" + line)
+    if previous_frame is not None:
+        previous_frame[:] = lines
+    sys.stdout.write("".join(updates))
     terminal_row = 6 + cursor_row - scroll
     terminal_column = 1 + min(cursor_column, wrap_width)
     sys.stdout.write(f"\033[{terminal_row};{terminal_column}H\033[?25h")
@@ -1057,6 +1067,9 @@ def mail_editor(recipient: str, subject: str, initial: str = "",
     status = f"{len(buffer.text)} / {buffer.maximum} characters"
     mode = "edit"
     last_size = -1
+    frame: list[str] = []
+    rendered_state = None
+    banner_was_active = False
     pager = _active_pager
     previous_hangup = signal.getsignal(signal.SIGHUP)
 
@@ -1067,9 +1080,22 @@ def mail_editor(recipient: str, subject: str, initial: str = "",
     try:
         tty.setraw(fd)
         while True:
-            scroll, wrap_width, body_height, last_size = _draw_mail_editor(
-                recipient, subject, buffer, scroll, status, mode, editor_title,
-                destination_label, submit_label, allow_draft)
+            size = shutil.get_terminal_size((80, 24))
+            packed_size = (size.columns << 16) | size.lines
+            if last_size != -1 and packed_size != last_size:
+                frame.clear()
+                status = "Terminal resized; message reflowed."
+            banner_active = bool(pager and time.monotonic() <
+                                 getattr(pager, "notification_until", 0.0))
+            if banner_was_active and not banner_active and frame:
+                frame[0] = ""  # Restore the title once a notification expires.
+            banner_was_active = banner_active
+            state = (buffer.text, buffer.cursor, status, mode, packed_size, banner_active)
+            if state != rendered_state:
+                scroll, wrap_width, body_height, last_size = _draw_mail_editor(
+                    recipient, subject, buffer, scroll, status, mode, editor_title,
+                    destination_label, submit_label, allow_draft, previous_frame=frame)
+                rendered_state = state
             sources: list[object] = [fd]
             if pager is not None:
                 sources.append(pager.sock)

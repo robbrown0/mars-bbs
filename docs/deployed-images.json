@@ -2,8 +2,8 @@
   {
     "service": "gateway",
     "container": "mars-v2ssh-gateway",
-    "image": "sha256:ccb77bd2ef84ae50ebfd2c31100adf9f0ca5d8d76da3bad98b52a8a2b53c1e92",
-    "tag": "mars-hotel-v2-gateway:monitor-banners-20261023",
+    "image": "sha256:2140119e3ee239e03086e42ffd9fe97ac38129cfa372240f74e50da46e86eab7",
+    "tag": "mars-hotel-v2-gateway:compose-render-20261023",
     "user": "root",
     "running": true,
     "read_only": true
