@@ -154,6 +154,23 @@ def _music_key(value: str) -> str:
     return "".join(character for character in ascii_value if character.isalnum())
 
 
+def _display_title(value: str) -> str:
+    """Hide filename track/disc prefixes without changing catalog identity."""
+    original = _safe_component(value).strip()
+    cleaned = re.sub(
+        r"^\s*(?:(?:\d{1,2}-\d{1,2})(?:\s*[-_.]\s*|\s+)"
+        r"|\d{1,3}(?:\s+|\s*[._]\s*|\s+-\s*|\s*-\s+))(?=\S)",
+        "", original, count=1,
+    ).strip()
+    return cleaned or original or "Untitled"
+
+
+def _public_row(row: sqlite3.Row | dict[str, object]) -> dict[str, object]:
+    result = dict(row)
+    result["title"] = _display_title(str(result.get("title", "")))
+    return result
+
+
 class Music:
     def __init__(self, db_path: str, session_socket: str,
                  sources: dict[str, str], public_url: str,
@@ -526,7 +543,7 @@ class Music:
                 "SELECT id,title,artist,album,source,extension,size FROM tracks" + where +
                 " ORDER BY artist COLLATE NOCASE,album COLLATE NOCASE,title COLLATE NOCASE "
                 "LIMIT ? OFFSET ?", parameters + [limit, offset]).fetchall()
-        return {"tracks": [dict(row) for row in rows], "total": total,
+        return {"tracks": [_public_row(row) for row in rows], "total": total,
                 "offset": offset, "next_offset": offset + len(rows)}
 
     def playlists(self) -> list[dict[str, object]]:
@@ -575,7 +592,8 @@ class Music:
         public_playlist = dict(playlist)
         if dynamic:
             public_playlist["dynamic"] = dynamic
-        return {"playlist": public_playlist, "tracks": [dict(row) for row in rows],
+        return {"playlist": public_playlist,
+                "tracks": [_public_row(row) for row in rows],
                 "total": total, "offset": offset, "next_offset": offset + len(rows)}
 
     def _public_track(self, track_id: int) -> dict[str, object]:
@@ -585,7 +603,7 @@ class Music:
                 "FROM tracks WHERE id=? AND available=1", (track_id,)).fetchone()
         if row is None:
             raise RPCError("track unavailable")
-        return dict(row)
+        return _public_row(row)
 
     def _track_file(self, track_id: int) -> tuple[sqlite3.Row, str]:
         with self.lock:
@@ -1349,7 +1367,7 @@ function audioReady(){enabled=true;enable.classList.remove('attention');hint.tex
 async function beginPlayback(){if(!audio.src){hint.textContent='Choose a song in the BBS or queue first.';return}try{await audio.play();audioReady()}catch(error){needsTap()}}
 function sessionEnded(){audio.pause();audio.removeAttribute('src');audio.load();metadataKey='';mediaArtworkData='';mediaArtworkType='';titleEl.textContent='Session ended';artistEl.textContent='Pair MarsAmp again from the BBS';albumEl.textContent='';hint.textContent='Playback authorization ended.';bars(false);setMediaState('none')}
 function setMediaState(value){if('mediaSession' in navigator){try{navigator.mediaSession.playbackState=value}catch(error){}}}
-function publishMetadata(track,artwork=ART512,type='image/png'){if(!track||!('mediaSession' in navigator)||!window.MediaMetadata)return;const image={src:artwork};if(type)image.type=type;if(artwork.startsWith('data:'))image.sizes='any';try{navigator.mediaSession.metadata=new MediaMetadata({title:text(track.title)||'Untitled',artist:text(track.artist)||'The Mars Hotel',album:text(track.album)||'MarsAmp',artwork:[image]})}catch(error){}}
+function publishMetadata(track,artwork=ART512,type='image/png'){if(!track||!('mediaSession' in navigator)||!window.MediaMetadata)return;const image={src:artwork};if(type)image.type=type;if(artwork.startsWith('data:'))image.sizes='any';const artist=text(track.artist)||'The Mars Hotel',album=text(track.album)||'MarsAmp',byline=album&&album!==artist?artist+' · '+album:artist;try{navigator.mediaSession.metadata=new MediaMetadata({title:text(track.title)||'Untitled',artist:byline,album:album,artwork:[image]})}catch(error){}}
 function asDataURL(blob){return new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result||''));reader.onerror=()=>reject(reader.error);reader.readAsDataURL(blob)})}
 function refreshMetadata(){if(currentTrack)publishMetadata(currentTrack,mediaArtworkData||ART512,mediaArtworkType||'image/png')}
 function scheduleMetadataRefresh(key){for(const delay of [150,750,1750])setTimeout(()=>{if(key===metadataKey)refreshMetadata()},delay)}
