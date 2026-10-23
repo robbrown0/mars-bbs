@@ -229,6 +229,16 @@ class MusicTests(unittest.TestCase):
         self.assertEqual(Music._playlist_match(battery, wanted), -1)
         self.assertEqual(Music._playlist_match(title_track, wanted), 100)
 
+    def test_playlist_match_retains_raw_identity_after_tag_normalization(self) -> None:
+        wanted = {"artists": ["Original Artist"], "title": "Original Song",
+                  "album": "Original Album"}
+        normalized = {
+            "artist": "Featured Performer", "title": "Canonical Recording",
+            "album": "Compilation", "raw_artist": "Original Artist",
+            "raw_title": "01 - Original Song", "raw_album": "Original Album",
+        }
+        self.assertEqual(Music._playlist_match(normalized, wanted), 130)
+
     def test_pair_ticket_is_single_use_and_session_bound(self) -> None:
         with patch("marsv2.musicd.validate", return_value=IDENTITY):
             paired = self.music.handle(self.request("pair"), (1, 29901, 29901))

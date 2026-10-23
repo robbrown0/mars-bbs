@@ -382,31 +382,45 @@ class Music:
 
     @staticmethod
     def _playlist_match(track: sqlite3.Row, wanted: dict[str, object]) -> int:
-        artist_key = _music_key(str(track["artist"]))
-        if artist_key not in {_music_key(str(value)) for value in wanted["artists"]}:
-            return -1
-        presented_title = _display_title(str(track["title"]))
-        title_key = _music_key(presented_title)
-        wanted_title = _music_key(str(wanted["title"]))
-        if title_key == wanted_title:
-            score = 100
-        elif wanted_title in title_key:
-            score = 70
+        keys = set(track.keys()) if isinstance(track, sqlite3.Row) else set(track)
+        if {"raw_artist", "raw_title", "raw_album"}.issubset(keys):
+            # Playlist manifests were audited against this immutable identity.
+            # Canonical tags improve presentation but must never retarget a
+            # curated entry to a different copy or recording.
+            variants = [(str(track["raw_artist"]), str(track["raw_title"]),
+                         str(track["raw_album"]))]
         else:
-            return -1
+            variants = [(str(track["artist"]), str(track["title"]),
+                         str(track["album"]))]
+        wanted_artists = {_music_key(str(value)) for value in wanted["artists"]}
+        wanted_title = _music_key(str(wanted["title"]))
         wanted_album = _music_key(str(wanted.get("album", "")))
-        if wanted_album:
-            album_key = _music_key(str(track["album"]))
-            if album_key == wanted_album:
-                score += 30
-            elif wanted_album in album_key or album_key in wanted_album:
-                score += 15
+        scores: list[int] = []
+        for artist, title, album in variants:
+            if _music_key(artist) not in wanted_artists:
+                continue
+            presented_title = _display_title(title)
+            title_key = _music_key(presented_title)
+            if title_key == wanted_title:
+                score = 100
+            elif wanted_title in title_key:
+                score = 70
             else:
-                score -= 10
-        lowered = presented_title.casefold()
-        if any(word in lowered for word in ("live", "demo", "tribute", "workout", "cover")):
-            score -= 20
-        return score
+                continue
+            if wanted_album:
+                album_key = _music_key(album)
+                if album_key == wanted_album:
+                    score += 30
+                elif wanted_album in album_key or album_key in wanted_album:
+                    score += 15
+                else:
+                    score -= 10
+            lowered = presented_title.casefold()
+            if any(word in lowered for word in
+                   ("live", "demo", "tribute", "workout", "cover")):
+                score -= 20
+            scores.append(score)
+        return max(scores, default=-1)
 
     def _refresh_playlists(self) -> None:
         """Resolve portable artist/title definitions against this host's catalog."""
@@ -416,7 +430,8 @@ class Music:
             ).fetchall()
             by_artist: dict[str, list[sqlite3.Row]] = {}
             for row in available:
-                by_artist.setdefault(_music_key(str(row["artist"])), []).append(row)
+                raw_artist_key = _music_key(str(row["raw_artist"]))
+                by_artist.setdefault(raw_artist_key, []).append(row)
             resolved: list[tuple[str, int, int]] = []
             for playlist in self.playlist_definitions:
                 if playlist.get("dynamic"):
