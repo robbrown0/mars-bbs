@@ -53,6 +53,10 @@ SUPPORTED = {
 SKIP_DIRECTORIES = {"#recycle", "@recycle", ".trash", ".trashes"}
 
 SCHEMA = """
+CREATE TABLE IF NOT EXISTS playback_state (
+  account_id INTEGER PRIMARY KEY,
+  state_json TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS tracks (
   id INTEGER PRIMARY KEY,
   source TEXT NOT NULL,
@@ -140,11 +144,29 @@ class Music:
         self.pair_tickets: dict[str, dict[str, object]] = {}
         self.browser_sessions: dict[str, dict[str, object]] = {}
         self.playback: dict[int, dict[str, object]] = {}
+        for row in self.db.execute("SELECT account_id,state_json FROM playback_state"):
+            try:
+                saved = json.loads(row["state_json"])
+                if not isinstance(saved, dict):
+                    continue
+                # Restore the selection without unexpectedly starting audio.
+                saved["action"] = "pause" if saved.get("track_id") else "stop"
+                saved["resume"] = True
+                self.playback[int(row["account_id"])] = saved
+            except (ValueError, TypeError):
+                continue
         self.scan_running = False
         self.last_scan = 0
         self.last_scan_result: dict[str, object] = {"tracks": 0, "errors": []}
         self.playlist_definitions = self._load_playlists(playlists_file)
         self._refresh_playlists()
+
+    def _save_playback(self, account_id: int) -> None:
+        """Persist only account-local queue state, never browser authorization."""
+        self.db.execute(
+            "INSERT INTO playback_state(account_id,state_json) VALUES(?,?) "
+            "ON CONFLICT(account_id) DO UPDATE SET state_json=excluded.state_json",
+            (account_id, json.dumps(self.playback[account_id], separators=(",", ":"))))
 
     @staticmethod
     def _load_playlists(filename: str | None) -> list[dict[str, object]]:
@@ -603,6 +625,7 @@ class Music:
                 state["stream"] = f"{self.base_path}/audio/{track_id}"
             except RPCError:
                 state.update({"action": "stop", "track_id": 0})
+        state["browser_active"] = self.browser_active(account_id)
         state.pop("queue", None)
         state.pop("shuffle_bag", None)
         state.pop("history", None)
@@ -632,6 +655,16 @@ class Music:
 
     def command(self, account_id: int, action: str, track_id: int = 0,
                 queue: object = None, mode: object = None) -> dict[str, object]:
+        if action == "resume":
+            with self.lock:
+                previous = self.playback.get(account_id)
+                if not previous or not previous.get("track_id"):
+                    raise RPCError("Select a song in MarsAmp first")
+                self._public_track(int(previous["track_id"]))
+                previous.update(action="play", resume=True,
+                                serial=int(previous.get("serial", 0)) + 1)
+                self._save_playback(account_id)
+            return self.state(account_id)
         if action not in ("play", "pause", "stop"):
             raise RPCError("invalid playback command")
         if action == "play":
@@ -648,7 +681,8 @@ class Music:
             selected_mode = (self._play_mode(mode) if mode is not None
                              else str(previous.get("mode", "sequential")))
             shuffle_bag = (self._shuffled(selected_queue, selected)
-                           if action == "play" and selected_mode == "shuffle" else [])
+                           if action == "play" and selected_mode == "shuffle" else
+                           list(previous.get("shuffle_bag", [])) if action == "pause" else [])
             self.playback[account_id] = {
                 "serial": int(previous.get("serial", 0)) + 1,
                 "action": action, "track_id": selected,
@@ -656,6 +690,7 @@ class Music:
                 "shuffle_bag": shuffle_bag,
                 "history": [] if action == "play" else list(previous.get("history", [])),
             }
+            self._save_playback(account_id)
         return self.state(account_id)
 
     @staticmethod
@@ -678,6 +713,7 @@ class Music:
             state["shuffle_bag"] = (self._shuffled(
                 [int(value) for value in state.get("queue", [])],
                 int(state.get("track_id", 0))) if selected_mode == "shuffle" else [])
+            self._save_playback(account_id)
         return self.state(account_id)
 
     def _available_queue(self, raw: object) -> list[int]:
@@ -692,7 +728,7 @@ class Music:
     def _move(self, account_id: int, backwards: bool = False) -> dict[str, object]:
         with self.lock:
             current = self.playback.get(account_id)
-            if not current or current.get("action") != "play":
+            if not current or current.get("action") not in ("play", "pause"):
                 return self.state(account_id)
             queue = self._available_queue(current.get("queue", []))
             if not queue:
@@ -726,9 +762,10 @@ class Music:
                     history.append(track_id)
             current.update({
                 "serial": int(current.get("serial", 0)) + 1,
-                "action": "play", "track_id": selected,
+                "action": "play", "resume": False, "track_id": selected,
                 "queue": queue, "history": history[-MAX_RESULTS:],
             })
+            self._save_playback(account_id)
         return self.state(account_id)
 
     def advance(self, account_id: int) -> dict[str, object]:
@@ -789,7 +826,7 @@ class Music:
             return self._new_pair(ident, str(req["token"]))
         if op == "status":
             return self.state(int(ident["account_id"]))
-        if op in ("play", "pause", "stop"):
+        if op in ("play", "pause", "stop", "resume"):
             track_id = 0
             if op == "play":
                 track_id = integer(data.get("id"), "track id")
@@ -798,7 +835,7 @@ class Music:
             account_id = int(ident["account_id"])
             result = self.command(account_id, op, track_id,
                                   data.get("queue"), data.get("mode"))
-            if op == "play" and not self.browser_active(account_id):
+            if op in ("play", "resume") and not self.browser_active(account_id):
                 result["pair_url"] = self._new_pair(
                     ident, str(req["token"]))["url"]
             return result
@@ -878,7 +915,7 @@ async function applyState(s){{if(s.track)document.getElementById('track').textCo
 (s.track.artist?s.track.artist+' - ':'')+s.track.title;
 mode.textContent='PLAY MODE: '+String(s.mode||'sequential').toUpperCase();
 if(s.serial!==serial){{serial=s.serial;if(s.action==='play'&&s.stream){{
-audio.src=s.stream;await beginPlayback();}}else if(s.action==='pause')audio.pause();
+if(!s.resume||!audio.src)audio.src=s.stream;await beginPlayback();}}else if(s.action==='pause')audio.pause();
 else if(s.action==='stop'){{audio.pause();audio.removeAttribute('src');audio.load();}}}}
 bars(!audio.paused)}}
 async function navigate(path,label){{hint.textContent=label;

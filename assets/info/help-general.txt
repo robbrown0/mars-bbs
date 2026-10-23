@@ -1,14 +1,14 @@
 LOBBY COMMANDS
 
-[B] Boards and public discussions      [N] Scan unread board messages
+[O] Boards and public discussions      [E] Scan unread board messages
 [C] Board activity counts              [M] Private Post Office
 [T] Talk Center                         [I] Embedded IRC
 [U] Active users                        [F] File Library
-[W] Revival information and history    [P] Profile and terminal utilities
+[W] Revival information and history    [S] Profile and terminal utilities
 [H] This Help Center                    [X] Exit / log off
 
-Profile and terminal utilities moved from the former [A] shortcut to [P].
-Use [P] from the Lobby on all current clients.
+Profile and terminal utilities use [S] from the Lobby.
+Boards use [O], and unread board scanning uses [E].
 
 Menus accept the highlighted letter immediately; Enter is not normally needed.
 The ? key also opens Help from the Lobby.
@@ -43,3 +43,9 @@ Lobby and supported full-screen tools switch to compact phone layouts; 80x24
 remains the classic desktop presentation. Larger terminals show more content.
 If a client reports the wrong width, use its fit-to-screen/font-size setting or
 the Utilities terminal page to compare the dimensions it actually reported.
+
+Main-menu MarsAmp controls (Music role):
+[B] Back    [P] Play / Pause    [N] Next
+These keys control music directly on the main menu; no focus switch is needed.
+Inside MarsAmp, playlists open first. [T] toggles playlists / all music.
+Your last song and queue are saved for your next login. [P] resumes playback.

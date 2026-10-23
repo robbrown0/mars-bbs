@@ -296,7 +296,7 @@ class RecoveryTests(unittest.TestCase):
                 return {"tracks": 26075}
             raise AssertionError(operation)
 
-        with patch.dict(ui._marsamp_view, {}, clear=True), \
+        with patch.dict(ui._marsamp_view, {"browse": "all"}, clear=True), \
                 patch.object(ui, "call", side_effect=music_call), \
                 patch.object(ui, "_marsamp_choose_playlist", return_value=None) as choose, \
                 patch.object(ui, "key_input", side_effect=["a", "x"]), \

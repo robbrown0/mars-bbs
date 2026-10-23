@@ -15,8 +15,8 @@ def socket_path(service: str) -> str:
 
 
 def call(service: str, op: str, data: dict[str, Any] | None = None,
-         token: str | None = None) -> dict[str, Any]:
-    response = request(socket_path(service), op, data, token)
+         token: str | None = None, *, timeout: float = 5.0) -> dict[str, Any]:
+    response = request(socket_path(service), op, data, token, timeout=timeout)
     if not response["ok"]:
         message = response.get("data", {}).get("error", "request failed")
         raise RPCError(str(message))

@@ -34,7 +34,7 @@ Inside MarsAmp, use:
 
 - arrow keys to move, `B` for the previous song, or `N` for the next song
 - Enter to play the highlighted song
-- `P` to pause and `V` to stop
+- `P` to play/pause and `V` to stop
 - `S` to switch between sequential and shuffle radio play
 - `A` to show the ten available curated playlists (`R` remains an alias)
 - `F` to find by inferred artist, album, or title
@@ -52,3 +52,36 @@ The browser streams the original file and does not transcode it. MP3 and M4A mak
 Sysops can inspect catalog state, add or remove approved additional locations, and request a rescan through **Administration → MarsAmp**. A rescan skips symbolic links, recycle/trash directories, unsupported extensions, and files that disappear during traversal. Missing sources are reported by source label without disclosing their host paths.
 
 The repository contains no music files, filenames, NAS addresses, SMB credentials, or catalog database. Operators are responsible for copyright and public-performance or streaming rights for every library they expose.
+
+
+### Compact player on the main menu
+
+Music-enabled accounts see a centered four-line MarsAmp header in the Lobby
+when the terminal has room. The artist and title scroll together between
+stationary music notes; the box and transport controls stay fixed. No volume
+control is shown. This initial rollout is limited to the main menu.
+
+On the main menu, `B` is Back, `P` is Play/Pause and `N` is Next, immediately.
+There is no focus mode or prefix. Main menu entries use `O` for Boards, `E` for
+New board messages and `S` for Profile / terminal. Other screens retain their
+existing commands. Pausing and resuming preserve the queue, shuffle bag,
+history and browser playback position.
+
+The player needs at least 60 columns and 24 rows, or 34 columns and 32 rows.
+Smaller terminals keep the existing menu. On a 24-row desktop terminal the
+Lobby uses two columns to keep the entire menu and prompt visible.
+
+
+### Playlist browsing and saved playback
+
+MarsAmp opens with the curated playlist picker on a fresh BBS login. `T` shows
+all music; on the track screen `T` toggles between all music and playlists.
+`A` also opens the playlist picker, and `F` searches the full catalog. The
+picker shows the current or last selected song, with `P` to play/pause it.
+
+The music database saves the selected song, playback queue, sequential/shuffle
+mode, shuffle bag and history separately for each account. They survive logout
+and music-service restarts. After a restart the selection is restored paused;
+`P` resumes it and offers browser pairing if needed. Browser credentials are
+not restored. A newly paired browser starts the saved song from its beginning;
+pausing and resuming in an already open browser preserves its position.

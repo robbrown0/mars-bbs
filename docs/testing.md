@@ -31,3 +31,21 @@ Validated on 2026-10-21:
 The deployed custom OpenSSH 10.6p1 source was unavailable. The Debian OpenSSH 10.0p1 replacement passed the complete SSH smoke test. The exact deployed Stockfish 19 binary was recovered reproducibly from the checksum-pinned official release archive.
 
 The optional door image rebuilds from the checksum-pinned dosemu2 artifact retained on its Launchpad build record and the exact FDPP, libfdpp and comcom64 PPA packages. The recovered artifact's `dosemu2.bin` SHA-256 matches the deployed binary. The build verifies and extracts the public LORD 4.02 archive. An isolated fresh world accepted the included registration and created the registered marker. Door authority and game-selection tests pass, and a private export of the exact deployed image was preserved. Full interactive Zork play remains outside the public test suite because its story data is not included.
+
+
+Validated on 2026-10-23 for the compact Lobby player and saved playback:
+
+- 47 unit tests passed using synthetic data, including direct B/P/N controls,
+  remapped O/E/S Lobby entries, role-gated player visibility, a real raw PTY,
+  scrolling-title border alignment and the header's new row position
+- saved per-account song, queue, shuffle bag and playback history survived a
+  music-service restart; browser authorization was not restored
+- playlists opened by default, with a T toggle to the full-catalog view
+- generated browser-player JavaScript passed Node syntax checking
+- deployed gateway/music source hashes matched the tested source; music RPC
+  health passed and unauthenticated browser audio returned HTTP 401
+- Gitleaks found no secrets in the staged change or existing Git history
+
+Market data remains unavailable because the deployed information service has no
+market API credential. The historical local credential path was an empty
+placeholder directory. No API key is included in this repository.

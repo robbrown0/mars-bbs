@@ -16,6 +16,7 @@ import termios
 import textwrap
 import time
 import tty
+import unicodedata
 from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
@@ -34,7 +35,9 @@ from .timezones import choose_timezone, current_time_lines
 
 
 def clear() -> None:
-    print("\033[2J\033[H", end="", flush=True)
+    global _mini_visible
+    _mini_visible = False
+    print("\033[r\033[2J\033[H", end="", flush=True)
 
 
 def pause() -> None:
@@ -72,8 +75,120 @@ BOARD_BODY_MAX = 16384
 MAIL_HISTORY_MAX = 6000
 _marsamp_view: dict[str, object] = {
     "query": "", "playlist": "", "playlist_name": "", "cursor": 0,
-    "mode": "sequential", "track_id": 0,
+    "mode": "sequential", "track_id": 0, "browse": "playlists",
 }
+
+
+_mini_token = ""
+_mini_visible = False
+_mini_state: dict[str, object] = {}
+_mini_poll_at = 0.0
+_mini_started = 0.0
+_mini_signature: object = None
+_mini_geometry = (0, 0)
+_mini_row = 1
+
+
+def _mini_text(value: object) -> str:
+    # Restrict metadata to one terminal cell per character, including CJK tags.
+    return "".join("?" if unicodedata.east_asian_width(c) in ("W", "F") else c
+                   for c in safe_text(value) if not unicodedata.combining(c))
+
+
+def _mini_refresh() -> bool:
+    global _mini_state, _mini_poll_at, _mini_started, _mini_signature
+    now = time.monotonic()
+    if now < _mini_poll_at:
+        return bool(_mini_state)
+    _mini_poll_at = now + 3.0
+    try:
+        state = call("music", "status", token=_mini_token, timeout=0.3)
+    except (OSError, RPCError):
+        _mini_poll_at = now + 30.0
+        return bool(_mini_state)
+    signature = (state.get("track_id"), state.get("track"))
+    if signature != _mini_signature:
+        _mini_started = now
+        _mini_signature = signature
+    _mini_state = state
+    return True
+
+
+def _mini_lines(columns: int, now: float | None = None) -> list[str]:
+    inner = min(38, columns - 4)
+    track = _mini_state.get("track")
+    if isinstance(track, dict):
+        artist = _mini_text(track.get("artist", ""))
+        title = _mini_text(track.get("title", "Untitled"))
+        label = (artist + " - " if artist else "") + title
+    else:
+        label = "Select music in [R] MarsAmp"
+    room = inner - 6
+    if len(label) > room:
+        elapsed = max(0.0, (time.monotonic() if now is None else now) - _mini_started - 1.5)
+        loop = label + "   /   "
+        offset = int(elapsed / 0.35) % len(loop)
+        label = (loop + loop)[offset:offset + room]
+    label = label[:room].ljust(room)
+    playing = (_mini_state.get("action") == "play"
+               and _mini_state.get("browser_active", True))
+    controls = f"[B] Back  [P] {'Pause' if playing else 'Play'}  [N] Next"
+    if len(controls) > inner:
+        controls = "[B]   [P]   [N]"
+    caption = " MARSAMP "
+    lines = ["┌" + caption.center(inner, "─") + "┐",
+             "│ ♪ " + label + " ♪ │",
+             "│" + controls.center(inner) + "│",
+             "└" + "─" * inner + "┘"]
+    padding = " " * max(0, (columns - inner - 2) // 2)
+    return [padding + line for line in lines]
+
+
+def _mini_heading(title: str = "", *, lobby: bool = False, row: int = 1) -> None:
+    global _mini_visible, _mini_geometry, _mini_row
+    size = shutil.get_terminal_size((80, 24))
+    if (not _mini_token or not lobby or width() < 34 or size.lines < 24
+            or (width() < 60 and size.lines < 32) or not _mini_refresh()):
+        return
+    _mini_visible = True
+    _mini_geometry = (width(), size.lines)
+    _mini_row = row
+    for line in _mini_lines(width()):
+        print(styled(line, CYAN))
+    if sys.stdout.isatty() and os.environ.get("TERM") != "dumb":
+        # Keep the player stationary even if a long post or a notice scrolls.
+        sys.stdout.write(f"\033[{row + 4};{size.lines}r\033[{row + 4};1H")
+        sys.stdout.flush()
+
+
+def _mini_tick() -> None:
+    if not _mini_visible or not sys.stdout.isatty() or os.environ.get("TERM") == "dumb":
+        return
+    size = shutil.get_terminal_size((80, 24))
+    if (width(), size.lines) != _mini_geometry:
+        # The old header's coordinates are unsafe after a resize. Redraw when
+        # the normal screen loop runs again; never overwrite content below it.
+        return
+    _mini_refresh()
+    sys.stdout.write("\0337")
+    for row, line in enumerate(_mini_lines(width()), _mini_row):
+        sys.stdout.write(f"\033[{row};1H" + styled(line, CYAN))
+    sys.stdout.write("\0338")
+    sys.stdout.flush()
+
+
+def _mini_control(value: str) -> None:
+    """Direct Lobby transport keys; other screen commands are unchanged."""
+    global _mini_poll_at
+    operation = {"b": "previous", "n": "advance", "p": "pause" if
+                 _mini_state.get("action") == "play" and
+                 _mini_state.get("browser_active", True) else "resume"}[value]
+    try:
+        _marsamp_transport(_mini_token, operation)
+        _mini_poll_at = 0.0
+    except (OSError, RPCError) as exc:
+        show_error(exc)
+        pause()
 
 
 _builtin_input: Callable[[str], str] = input
@@ -264,7 +379,8 @@ class Pager:
         try:
             tty.setraw(fd)
             while True:
-                ready, _, _ = select.select([fd, self.sock], [], [])
+                ready, _, _ = select.select([fd, self.sock], [], [], 0.35 if _mini_visible else None)
+                _mini_tick()
                 if self.sock in ready:
                     event = self.receive()
                     if event.get("kind") != "pager_ready":
@@ -4982,7 +5098,7 @@ def _marsamp_play(token: str, track: dict[str, object],
 def _marsamp_choose_playlist(token: str) -> dict[str, object] | None:
     playlists = list(call("music", "playlists", token=token).get("playlists", []))
     if not playlists:
-        return None
+        return {"all": True}
     cursor = 0
     while True:
         heading("MARSAMP PLAYLISTS", "Curated from highly rated songs available on the NAS")
@@ -4993,10 +5109,20 @@ def _marsamp_choose_playlist(token: str) -> dict[str, object] | None:
             print(styled(rendered, REVERSE) if position == cursor else rendered)
         selected = playlists[cursor]
         print("\n" + clip(safe_text(selected.get("description", "")), width()))
-        print(styled("\n[Enter] open  [X/Esc] return", DIM))
+        state = call("music", "status", token=token)
+        track = state.get("track")
+        if isinstance(track, dict):
+            print(clip("Last / current: " + str(track.get("artist", "")) + " - " +
+                       str(track.get("title", "")), width()))
+        print(styled("\n[Enter] open  [T] all music  [P] play/pause  [X/Esc] return", DIM))
         choice = key_input("Playlists> ", escape_command="x")
         if choice in ("x", "q"):
             return None
+        if choice == "t":
+            return {"all": True}
+        if choice == "p":
+            _marsamp_transport(token, "pause" if state.get("action") == "play" and
+                               state.get("browser_active", True) else "resume")
         if choice == "j":
             cursor = min(len(playlists) - 1, cursor + 1)
         elif choice == "k":
@@ -5034,9 +5160,20 @@ def marsamp(token: str) -> None:
         mode = "sequential"
     remembered_track = int(_marsamp_view.get("track_id", 0) or 0)
     entering = True
+    browse = str(_marsamp_view.get("browse", "all" if query else "playlists"))
     notice = ""
     while True:
         try:
+            if browse == "playlists" and not playlist_slug:
+                selected = _marsamp_choose_playlist(token)
+                if selected is None:
+                    return
+                if selected.get("all"):
+                    browse = "all"
+                    query = ""
+                else:
+                    playlist_slug = safe_text(selected.get("slug", ""))[:48]
+                    playlist_name = safe_text(selected.get("name", ""))[:80]
             if playlist_slug:
                 result = call("music", "playlist_tracks", {
                     "slug": playlist_slug, "offset": 0, "limit": 100,
@@ -5072,7 +5209,7 @@ def marsamp(token: str) -> None:
         cursor = max(0, min(cursor, len(tracks) - 1)) if tracks else 0
         _marsamp_view.update(query=query, playlist=playlist_slug,
                              playlist_name=playlist_name, cursor=cursor, mode=mode,
-                             track_id=current_track)
+                             track_id=current_track, browse=browse)
         heading("MARSAMP 0.1", "NAS01 primary / UNR01 secondary",
                 str(state.get("action", "stop")).upper())
         if isinstance(current, dict):
@@ -5104,8 +5241,8 @@ def marsamp(token: str) -> None:
             print("No matching tracks.")
         if notice:
             print(styled("\n" + clip(notice, width()), YELLOW))
-        controls = ("[Enter] play  [B] back  [N] next  [P] pause  [V] stop  "
-                    "[S] shuffle  [A] available playlists  [F] find  [L] link audio  "
+        controls = ("[Enter] play  [B] back  [N] next  [P] play/pause  [V] stop  "
+                    "[S] shuffle  [T] playlists/all  [A] available playlists  [F] find  [L] link audio  "
                     "[X/Esc] return")
         print()
         for line in textwrap.wrap(controls, width=max(20, width()),
@@ -5126,7 +5263,7 @@ def marsamp(token: str) -> None:
             elif choice == "" and tracks:
                 notice = _marsamp_play(token, tracks[cursor], tracks, mode)
             elif choice in ("b", "z"):
-                if str(state.get("action", "stop")) == "play":
+                if str(state.get("action", "stop")) in ("play", "pause"):
                     moved = _marsamp_transport(token, "previous")
                     moved_id = int(moved.get("track_id", 0) or 0)
                     for position, row in enumerate(tracks):
@@ -5138,7 +5275,7 @@ def marsamp(token: str) -> None:
                     cursor = (cursor - 1) % len(tracks)
                     notice = _marsamp_play(token, tracks[cursor], tracks, mode)
             elif choice == "n":
-                if str(state.get("action", "stop")) == "play":
+                if str(state.get("action", "stop")) in ("play", "pause"):
                     moved = _marsamp_transport(token, "advance")
                     moved_id = int(moved.get("track_id", 0) or 0)
                     for position, row in enumerate(tracks):
@@ -5151,7 +5288,8 @@ def marsamp(token: str) -> None:
                     cursor = (cursor + 1) % len(tracks)
                     notice = _marsamp_play(token, tracks[cursor], tracks, mode)
             elif choice in ("p", "c"):
-                call("music", "pause", token=token)
+                _marsamp_transport(token, "pause" if state.get("action") == "play" and
+                               state.get("browser_active", True) else "resume")
             elif choice == "v":
                 call("music", "stop", token=token)
             elif choice in ("s", "m"):
@@ -5160,6 +5298,7 @@ def marsamp(token: str) -> None:
                 _marsamp_view.update(query=query, cursor=cursor, mode=mode)
                 notice = "Play mode changed to " + mode.upper() + "."
             elif choice == "f":
+                browse = "all"
                 print()
                 query = input("Find artist, album, or title (blank shows all): ").strip()[:80]
                 playlist_slug = ""
@@ -5167,9 +5306,17 @@ def marsamp(token: str) -> None:
                 cursor = 0
                 _marsamp_view.update(query=query, playlist="", playlist_name="",
                                      cursor=cursor)
+            elif choice == "t":
+                browse = "all" if playlist_slug else "playlists"
+                query = ""
+                playlist_slug = ""
+                playlist_name = ""
+                cursor = 0
             elif choice in ("a", "r"):
                 selected = _marsamp_choose_playlist(token)
                 if selected is not None:
+                    browse = "all" if selected.get("all") else "playlists"
+                    query = ""
                     playlist_slug = safe_text(selected.get("slug", ""))[:48]
                     playlist_name = safe_text(selected.get("name", ""))[:80]
                     cursor = 0
@@ -5184,22 +5331,24 @@ def marsamp(token: str) -> None:
 
 def main_heading(identity: dict[str, object], active_users: int | None,
                  site: dict[str, object]) -> None:
-    """Draw the main-menu heading with presence at the upper right."""
+    """Keep Lobby identity and presence above the compact music player."""
     clear()
     columns = min(width(), 78)
     title = safe_text(site.get("bbs_name", "The Mars Hotel")).upper() + " LOBBY"
     count = f"ACTIVE USERS: {active_users if active_users is not None else '?'}"
+    header_rows = 1
     if len(title) + len(count) + 1 <= columns:
         gap = " " * (columns - len(title) - len(count))
         print(styled(title, BOLD, CYAN) + gap + styled(count, BOLD, CYAN))
     else:
-        print(styled(title, BOLD, CYAN))
-        print(styled(count, BOLD, CYAN))
-    print(styled(clip(f"{identity['display_name']}  /  @{identity['userid']}", columns), DIM))
-    previous = int(identity.get("last_login", 0) or 0)
-    print(styled(clip("Last check-in: " +
-                      (mail_datetime(previous) if previous else "this is your first visit"),
-                      columns), DIM))
+        print(styled(clip(title, columns), BOLD, CYAN))
+        print(styled(clip(count, columns), BOLD, CYAN))
+        header_rows += 1
+    name = safe_text(identity['display_name'])
+    handle = safe_text(identity['userid'])
+    label = f"{name} (@{handle})" if name.casefold() != handle.casefold() else f"@{handle}"
+    print(styled(clip(label, columns), DIM))
+    _mini_heading(lobby=True, row=header_rows + 2)
     print(styled("=" * columns, DIM))
 
 
@@ -5215,7 +5364,7 @@ def confirm_main_menu_exit(bbs_name: str) -> bool:
 
 
 def main() -> None:
-    global _active_pager
+    global _active_pager, _mini_token
     descriptor = int(os.environ.get("MARS_V2_SESSION_FD", "3"))
     payload = b""
     while True:
@@ -5251,11 +5400,29 @@ def main() -> None:
                 site = call("mail", "site_identity", token=token)
             except (OSError, RPCError):
                 pass
+            _mini_token = token if _can(identity, "music.play") else ""
             main_heading(identity, active_users, site)
-            if width() < 60:
+            if _mini_visible and width() >= 60 and shutil.get_terminal_size((80, 24)).lines < 38:
+                # Keep the entire Lobby and prompt visible on a 24-row PTY.
+                entries = [
+                    (f"[O] Boards ({unread_posts} new)", "[T] Talk"),
+                    ("[E] New board messages", "[I] IRC / MarsHotel room"),
+                    ("[C] Board counts", "[U] Member directory"),
+                    (f"[M] Mail ({unread_mail} unread)", "[D] DataNet"),
+                    ("[F] Files", "[G] Galactic Arcade"),
+                    ("[R] MarsAmp", "[W] Welcome / history"),
+                    ("[S] Profile / terminal", "[H] Help"),
+                ]
+                half = min(width(), 78) // 2
+                for left, right in entries:
+                    print("  " + left.ljust(half - 2) + right)
+                if ADMIN_CAPABILITIES.intersection(identity.get("capabilities", [])):
+                    print("  [A] Administration")
+                print("  [X] Exit")
+            elif width() < 60:
                 print(styled("COMMUNITY", BOLD, YELLOW))
-                print(f" [B] Boards ({unread_posts} new)")
-                print(" [N] New board messages")
+                print(f" [O] Boards ({unread_posts} new)")
+                print(" [E] New board messages")
                 print(" [C] Board counts")
                 print(f" [M] Mail ({unread_mail} unread)")
                 print(styled("LIVE", BOLD, YELLOW))
@@ -5269,15 +5436,15 @@ def main() -> None:
                 if _can(identity, "music.play"):
                     print(" [R] MarsAmp")
                 print(" [W] Welcome / history")
-                print(" [P] Profile / terminal")
+                print(" [S] Profile / terminal")
                 if ADMIN_CAPABILITIES.intersection(identity.get("capabilities", [])):
                     print(" [A] Administration")
                 print(" [H] Help")
                 print(" [X] Exit")
             else:
                 print(styled("COMMUNITY", BOLD, YELLOW))
-                print(f"  [B]oards       Browse and post messages       {unread_posts:3} new")
-                print("  [N]ew          Scan unread board messages")
+                print(f"  [O] Boards       Browse and post messages       {unread_posts:3} new")
+                print("  [E] New          Scan unread board messages")
                 print("  [C]ount        Board activity summary")
                 print(f"  [M]ail         Private post office            {unread_mail:3} unread")
                 print()
@@ -5293,7 +5460,7 @@ def main() -> None:
                 if _can(identity, "music.play"):
                     print("  [R]adio        MarsAmp NAS music player")
                 print("  [W]elcome      Revival information and Mars history")
-                print("  [P]rofile      Account and terminal utilities")
+                print("  [S] Profile      Account and terminal utilities")
                 if ADMIN_CAPABILITIES.intersection(identity.get("capabilities", [])):
                     print("  [A]dmin        BBS administration console")
                 print("  [H]elp         Command guide")
@@ -5313,10 +5480,12 @@ def main() -> None:
                 continue
             if choice == "x":
                 break
-            if choice == "b":
+            if choice in ("b", "p", "n") and _can(identity, "music.play"):
+                _mini_control(choice)
+            elif choice == "o":
                 pager.activity("Boards")
                 boards(token)
-            elif choice == "n":
+            elif choice == "e":
                 pager.activity("Reading new posts")
                 scan_new_posts(token)
             elif choice == "c":
@@ -5344,7 +5513,7 @@ def main() -> None:
             elif choice == "t":
                 pager.activity("Talk Center")
                 talk(token, pager)
-            elif choice in ("i", "o"):
+            elif choice == "i":
                 pager.activity("IRC")
                 irc_center(token)
             elif choice == "u":
@@ -5355,7 +5524,7 @@ def main() -> None:
                     show_error(exc)
             elif choice == "w":
                 welcome_screen()
-            elif choice == "p":
+            elif choice == "s":
                 utilities(identity)
             elif choice == "a" and ADMIN_CAPABILITIES.intersection(
                     identity.get("capabilities", [])):
@@ -5368,12 +5537,14 @@ def main() -> None:
                 help_center()
     finally:
         _active_pager = None
+        _mini_token = ""
         if pager is not None:
             pager.close()
         try:
             call("session", "end", token=token)
         except Exception:
             pass
+    sys.stdout.write("\033[r")
     print("\nGoodbye from " + safe_text(site.get("bbs_name", "The Mars Hotel")) + ".")
 
 
