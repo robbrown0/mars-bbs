@@ -1,4 +1,3 @@
-/bin/bash: warning: setlocale: LC_ALL: cannot change locale (C.UTF-8): No such file or directory
 # Recovery record
 
 Recovery began 2026-10-18 on `unr01`. Existing material was never overwritten. A new private archive of prior recovery, reconstructed source and configuration has SHA-256 `e93f62443d32faf307d6c72005868bd5cdf8b82bcefe9c94f3c2d9d46ec2561e`. It is preservation evidence, not a transactionally consistent live-database backup. Raw Docker inventories, inspect records, histories and 12 running-container source captures remain private outside Git.
