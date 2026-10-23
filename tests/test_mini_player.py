@@ -30,10 +30,16 @@ class MiniPlayerTests(unittest.TestCase):
             for lines in frames:
                 self.assertEqual(len(set(map(len, lines))), 1)
                 self.assertLessEqual(len(lines[0]), columns - 1)
-                for line in lines[1:3]:
+                for line in lines[1:2]:
                     self.assertEqual(line.index('│'), lines[0].index('┌'))
                     self.assertEqual(line.rindex('│'), lines[0].index('┐'))
                 self.assertIn('♪', lines[1])
+                self.assertEqual(len(lines), 3)
+                self.assertIn('[B]', lines[2])
+                self.assertIn('[P]', lines[2])
+                self.assertIn('[N]', lines[2])
+                self.assertEqual(lines[2].index('└'), lines[0].index('┌'))
+                self.assertEqual(lines[2].index('┘'), lines[0].index('┐'))
             self.assertNotEqual(frames[0][1], frames[1][1])
             self.assertEqual(frames[0][0], frames[1][0])
             self.assertEqual(frames[0][2:], frames[1][2:])
@@ -150,14 +156,14 @@ ui.main()
         child = pexpect.spawn(sys.executable, ['-c', script], encoding='utf-8',
                               timeout=6, dimensions=(24, 80), env=dict(os.environ, TERM='xterm-256color'))
         try:
-            child.expect_exact('[Mars Hotel Main Menu] -> ')
+            child.expect_exact('[Main Lobby] -> ')
             for key, operation in [('b', 'previous'), ('p', 'pause'), ('p', 'resume'), ('n', 'advance')]:
                 child.send(key)
                 child.expect_exact('TRANSPORT ' + operation)
-                child.expect_exact('[Mars Hotel Main Menu] -> ')
+                child.expect_exact('[Main Lobby] -> ')
             child.send('o')
             child.expect_exact('BOARD OPENED')
-            child.expect_exact('[Mars Hotel Main Menu] -> ')
+            child.expect_exact('[Main Lobby] -> ')
             child.send('x')
             child.expect(pexpect.EOF)
         finally:
@@ -174,6 +180,7 @@ ui.main()
                 self.assertIn('brownstone (@rob)', header)
                 self.assertNotIn('Last check-in', header)
                 self.assertEqual(ui._mini_row, 3)
+                self.assertIn("\033[6;24r\033[6;1H", header)
                 output.seek(0)
                 output.truncate()
                 ui._mini_tick()

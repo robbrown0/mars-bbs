@@ -81,3 +81,21 @@ Validated on 2026-10-23 for compose-screen flicker:
 The shared mail/board editor keeps its periodic resize check, but redraws only
 when its state changes. Changed content rows are updated in place. A complete
 clear is used only for the initial frame and a terminal resize.
+
+
+Validated on 2026-10-23 for the saved compact-player layout toggle:
+
+- 61 unit tests and all 14 recovered model suites passed
+- three- and four-line players retained aligned borders and B/P/N controls
+  across narrow and wide terminals, both playing and paused
+- listeners could read the setting but could not change it; only music.manage
+  could select 3 or 4 lines, and other values were rejected
+- the chosen layout survived reopening the music database
+- the administration L command changed the saved setting and refreshed the
+  local status cache; periodic title updates retained the current frame height
+  until the next Lobby redraw
+- the compact player's scroll region followed its actual number of rows
+
+The new player defaults to three lines, with the transport keys in its bottom
+border. Four-line mode keeps a separate transport row. The main prompt is now
+`Main Lobby`. Both changes are included with the layout setting.

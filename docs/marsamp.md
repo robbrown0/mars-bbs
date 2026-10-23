@@ -56,10 +56,11 @@ The repository contains no music files, filenames, NAS addresses, SMB credential
 
 ### Compact player on the main menu
 
-Music-enabled accounts see a centered four-line MarsAmp header in the Lobby
+Music-enabled accounts see a centered MarsAmp header in the Lobby
 when the terminal has room. The artist and title scroll together between
 stationary music notes; the box and transport controls stay fixed. No volume
-control is shown. This initial rollout is limited to the main menu.
+control is shown. Three-line mode puts controls in the bottom border; four-line
+mode gives them a separate row. This initial rollout is limited to the main menu.
 
 On the main menu, `B` is Back, `P` is Play/Pause and `N` is Next, immediately.
 There is no focus mode or prefix. Main menu entries use `O` for Boards, `E` for
@@ -89,3 +90,12 @@ pausing and resuming in an already open browser preserves its position.
 
 The administration source table uses the same field widths for headings and
 rows, so SOURCE, TYPE and STATUS align with each source's values.
+
+
+Under **Administration → MarsAmp**, `L` toggles the compact player between
+three and four lines. The current mode and the next choice are displayed.
+This site-wide setting requires `music.manage` and persists in the music
+database across service restarts. Three lines is the default. Each session
+adopts a changed layout on its next Lobby redraw so an idle player's border
+cannot overwrite the menu below it. Direct B/P/N controls are unchanged.
+The Lobby command prompt is labeled `Main Lobby`.

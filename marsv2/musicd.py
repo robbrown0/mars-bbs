@@ -53,6 +53,11 @@ SUPPORTED = {
 SKIP_DIRECTORIES = {"#recycle", "@recycle", ".trash", ".trashes"}
 
 SCHEMA = """
+CREATE TABLE IF NOT EXISTS player_settings (
+  id INTEGER PRIMARY KEY CHECK(id=1),
+  compact_lines INTEGER NOT NULL CHECK(compact_lines IN (3,4))
+);
+INSERT OR IGNORE INTO player_settings(id,compact_lines) VALUES(1,3);
 CREATE TABLE IF NOT EXISTS playback_state (
   account_id INTEGER PRIMARY KEY,
   state_json TEXT NOT NULL
@@ -160,6 +165,11 @@ class Music:
         self.last_scan_result: dict[str, object] = {"tracks": 0, "errors": []}
         self.playlist_definitions = self._load_playlists(playlists_file)
         self._refresh_playlists()
+
+    def player_layout(self) -> int:
+        with self.lock:
+            return int(self.db.execute(
+                "SELECT compact_lines FROM player_settings WHERE id=1").fetchone()[0])
 
     def _save_playback(self, account_id: int) -> None:
         """Persist only account-local queue state, never browser authorization."""
@@ -625,6 +635,7 @@ class Music:
                 state["stream"] = f"{self.base_path}/audio/{track_id}"
             except RPCError:
                 state.update({"action": "stop", "track_id": 0})
+        state["compact_player_lines"] = self.player_layout()
         state["browser_active"] = self.browser_active(account_id)
         state.pop("queue", None)
         state.pop("shuffle_bag", None)
@@ -790,8 +801,17 @@ class Music:
         if op == "stats":
             health = self.handle({"op": "health"}, peer)
             health.update({"sources": list(self._all_sources()), "last_scan": self.last_scan,
-                           "last_scan_result": self.last_scan_result})
+                           "last_scan_result": self.last_scan_result,
+                           "compact_player_lines": self.player_layout()})
             return health
+        if op == "admin_player_layout":
+            self._require(ident, MANAGE_CAPABILITY)
+            if set(data) != {"lines"}:
+                raise RPCError("invalid player layout request")
+            lines = integer(data["lines"], "player lines", 3, 4)
+            with self.lock:
+                self.db.execute("UPDATE player_settings SET compact_lines=? WHERE id=1", (lines,))
+            return {"compact_player_lines": lines}
         if op == "admin_sources":
             self._require(ident, MANAGE_CAPABILITY)
             return {"sources": self.admin_sources()}
