@@ -309,14 +309,14 @@ class RecoveryTests(unittest.TestCase):
         self.assertIn("[A]", rendered)
         self.assertIn("available playlists", rendered)
 
-    def test_marsamp_loads_the_complete_hundred_song_playlist(self):
+    def test_marsamp_loads_the_complete_expanded_playlist(self):
         from marsv2 import ui
 
         def music_call(service, operation, data=None, token=None):
             self.assertEqual(service, "music")
             if operation == "playlist_tracks":
                 self.assertEqual(data, {
-                    "slug": "eighties-essentials", "offset": 0, "limit": 100,
+                    "slug": "eighties-essentials", "offset": 0, "limit": 250,
                 })
                 return {"playlist": {"name": "1980s Essentials"}, "tracks": []}
             if operation == "status":
@@ -331,6 +331,36 @@ class RecoveryTests(unittest.TestCase):
                 patch.object(ui, "key_input", side_effect=["x"]), \
                 patch.object(ui, "heading"), patch("builtins.print"):
             ui.marsamp("session-token")
+
+    def test_marsamp_dynamic_all_forces_shuffle_scope(self):
+        from marsv2 import ui
+
+        tracks = [{"id": 41, "artist": "First", "title": "Random Start"}]
+
+        def music_call(service, operation, data=None, token=None):
+            self.assertEqual(service, "music")
+            if operation == "playlist_tracks":
+                return {
+                    "playlist": {"name": "Shuffle Everything", "dynamic": "all"},
+                    "tracks": tracks, "total": 26075,
+                }
+            if operation == "status":
+                return {"action": "stop", "mode": "sequential"}
+            if operation == "stats":
+                return {"tracks": 26075}
+            raise AssertionError(operation)
+
+        with patch.dict(ui._marsamp_view,
+                        {"playlist": "shuffle-everything"}, clear=True), \
+                patch.object(ui, "call", side_effect=music_call), \
+                patch.object(ui, "_marsamp_play", return_value="playing") as play, \
+                patch.object(ui, "key_input", side_effect=["", "x"]), \
+                patch.object(ui, "heading"), patch("builtins.print"):
+            ui.marsamp("session-token")
+
+        self.assertEqual(play.call_args.args,
+                         ("session-token", tracks[0], tracks, "shuffle",
+                          "shuffle-everything"))
 
     def test_board_authentication_and_write_read(self):
         identity = {"account_id": 1, "userid": "tester", "roles": ["Basic-1"], "capabilities": []}

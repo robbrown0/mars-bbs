@@ -32,8 +32,9 @@ PLAY_CAPABILITY = "music.play"
 MANAGE_CAPABILITY = "music.manage"
 PAIR_SECONDS = 90
 BROWSER_SECONDS = 8 * 60 * 60
-MAX_RESULTS = 100
+MAX_RESULTS = 250
 PLAY_MODES = {"sequential", "shuffle"}
+DYNAMIC_ALL = "all"
 TOKEN_RE = re.compile(r"[A-Za-z0-9_-]{43,86}\Z")
 SUPPORTED = {
     ".aac": "audio/aac",
@@ -164,6 +165,10 @@ class Music:
         self.last_scan = 0
         self.last_scan_result: dict[str, object] = {"tracks": 0, "errors": []}
         self.playlist_definitions = self._load_playlists(playlists_file)
+        self.dynamic_playlists = {
+            str(item["slug"]): str(item.get("dynamic", ""))
+            for item in self.playlist_definitions if item.get("dynamic")
+        }
         self._refresh_playlists()
 
     def player_layout(self) -> int:
@@ -198,13 +203,16 @@ class Music:
             name = str(playlist.get("name", ""))
             description = str(playlist.get("description", ""))
             tracks = playlist.get("tracks")
+            dynamic = str(playlist.get("dynamic", ""))
             if (not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,47}", slug)
                     or slug in slugs or not 1 <= len(name) <= 80
-                    or len(description) > 240 or not isinstance(tracks, list)
-                    or not 1 <= len(tracks) <= 100):
+                    or len(description) > 240 or dynamic not in ("", DYNAMIC_ALL)
+                    or (dynamic and tracks not in (None, []))
+                    or (not dynamic and (not isinstance(tracks, list)
+                                         or not 1 <= len(tracks) <= MAX_RESULTS))):
                 raise RuntimeError("curated playlist entry is invalid")
             clean_tracks: list[dict[str, object]] = []
-            for track in tracks:
+            for track in tracks or []:
                 if not isinstance(track, dict):
                     raise RuntimeError("curated playlist track is invalid")
                 title = str(track.get("title", ""))
@@ -217,7 +225,8 @@ class Music:
                     raise RuntimeError("curated playlist track is invalid")
                 clean_tracks.append({"title": title, "artists": artists, "album": album})
             result.append({"slug": slug, "name": name, "description": description,
-                           "position": position, "tracks": clean_tracks})
+                           "position": position, "tracks": clean_tracks,
+                           "dynamic": dynamic})
             slugs.add(slug)
         return result
 
@@ -259,6 +268,8 @@ class Music:
                 by_artist.setdefault(_music_key(str(row["artist"])), []).append(row)
             resolved: list[tuple[str, int, int]] = []
             for playlist in self.playlist_definitions:
+                if playlist.get("dynamic"):
+                    continue
                 used: set[int] = set()
                 for position, wanted in enumerate(playlist["tracks"]):
                     matching_rows: list[sqlite3.Row] = []
@@ -493,7 +504,14 @@ class Music:
                 "FROM playlists p LEFT JOIN playlist_tracks pt ON pt.playlist_slug=p.slug "
                 "GROUP BY p.slug,p.name,p.description,p.position ORDER BY p.position"
             ).fetchall()
-        return [dict(row) for row in rows]
+            available = int(self.db.execute(
+                "SELECT count(*) FROM tracks WHERE available=1").fetchone()[0])
+        result = [dict(row) for row in rows]
+        for row in result:
+            dynamic = self.dynamic_playlists.get(str(row["slug"]), "")
+            if dynamic == DYNAMIC_ALL:
+                row.update(dynamic=dynamic, tracks=available)
+        return result
 
     def playlist_tracks(self, slug: str, offset: int, limit: int) -> dict[str, object]:
         with self.lock:
@@ -502,17 +520,30 @@ class Music:
             ).fetchone()
             if playlist is None:
                 raise RPCError("playlist not found")
-            total = int(self.db.execute(
-                "SELECT count(*) FROM playlist_tracks pt JOIN tracks t ON t.id=pt.track_id "
-                "WHERE pt.playlist_slug=? AND t.available=1", (slug,)
-            ).fetchone()[0])
-            rows = self.db.execute(
-                "SELECT t.id,t.title,t.artist,t.album,t.source,t.extension,t.size "
-                "FROM playlist_tracks pt JOIN tracks t ON t.id=pt.track_id "
-                "WHERE pt.playlist_slug=? AND t.available=1 "
-                "ORDER BY pt.position LIMIT ? OFFSET ?", (slug, limit, offset)
-            ).fetchall()
-        return {"playlist": dict(playlist), "tracks": [dict(row) for row in rows],
+            dynamic = self.dynamic_playlists.get(slug, "")
+            if dynamic == DYNAMIC_ALL:
+                total = int(self.db.execute(
+                    "SELECT count(*) FROM tracks WHERE available=1").fetchone()[0])
+                rows = self.db.execute(
+                    "SELECT id,title,artist,album,source,extension,size FROM tracks "
+                    "WHERE available=1 ORDER BY artist COLLATE NOCASE,album COLLATE NOCASE,"
+                    "title COLLATE NOCASE LIMIT ? OFFSET ?", (limit, offset)
+                ).fetchall()
+            else:
+                total = int(self.db.execute(
+                    "SELECT count(*) FROM playlist_tracks pt JOIN tracks t ON t.id=pt.track_id "
+                    "WHERE pt.playlist_slug=? AND t.available=1", (slug,)
+                ).fetchone()[0])
+                rows = self.db.execute(
+                    "SELECT t.id,t.title,t.artist,t.album,t.source,t.extension,t.size "
+                    "FROM playlist_tracks pt JOIN tracks t ON t.id=pt.track_id "
+                    "WHERE pt.playlist_slug=? AND t.available=1 "
+                    "ORDER BY pt.position LIMIT ? OFFSET ?", (slug, limit, offset)
+                ).fetchall()
+        public_playlist = dict(playlist)
+        if dynamic:
+            public_playlist["dynamic"] = dynamic
+        return {"playlist": public_playlist, "tracks": [dict(row) for row in rows],
                 "total": total, "offset": offset, "next_offset": offset + len(rows)}
 
     def _public_track(self, track_id: int) -> dict[str, object]:
@@ -665,7 +696,8 @@ class Music:
         return mode
 
     def command(self, account_id: int, action: str, track_id: int = 0,
-                queue: object = None, mode: object = None) -> dict[str, object]:
+                queue: object = None, mode: object = None,
+                scope: object = None) -> dict[str, object]:
         if action == "resume":
             with self.lock:
                 previous = self.playback.get(account_id)
@@ -691,13 +723,23 @@ class Music:
                               else list(previous.get("queue", [])))
             selected_mode = (self._play_mode(mode) if mode is not None
                              else str(previous.get("mode", "sequential")))
+            selected_scope = (text(scope, "playback scope", 48).strip().casefold()
+                              if action == "play" and scope else
+                              str(previous.get("scope", "")) if action != "play" else "")
+            if selected_scope:
+                if self.dynamic_playlists.get(selected_scope) != DYNAMIC_ALL:
+                    raise RPCError("invalid playback scope")
+                selected_queue = [selected]
+                selected_mode = "shuffle"
             shuffle_bag = (self._shuffled(selected_queue, selected)
-                           if action == "play" and selected_mode == "shuffle" else
+                           if action == "play" and selected_mode == "shuffle"
+                           and not selected_scope else
                            list(previous.get("shuffle_bag", [])) if action == "pause" else [])
             self.playback[account_id] = {
                 "serial": int(previous.get("serial", 0)) + 1,
                 "action": action, "track_id": selected,
                 "queue": selected_queue, "mode": selected_mode,
+                "scope": selected_scope,
                 "shuffle_bag": shuffle_bag,
                 "history": [] if action == "play" else list(previous.get("history", [])),
             }
@@ -720,6 +762,8 @@ class Music:
                 "serial": 0, "action": "stop", "track_id": 0, "queue": [],
                 "mode": "sequential",
             })
+            if state.get("scope") and selected_mode != "shuffle":
+                selected_mode = "shuffle"
             state["mode"] = selected_mode
             state["shuffle_bag"] = (self._shuffled(
                 [int(value) for value in state.get("queue", [])],
@@ -736,10 +780,99 @@ class Music:
             f"SELECT id FROM tracks WHERE available=1 AND id IN ({placeholders})", queue)}
         return [value for value in queue if value in available]
 
+    def _queue_tracks(self, track_ids: list[int]) -> list[dict[str, object]]:
+        if not track_ids:
+            return []
+        placeholders = ",".join("?" for _ in track_ids)
+        rows = self.db.execute(
+            "SELECT id,title,artist,album FROM tracks WHERE available=1 "
+            f"AND id IN ({placeholders})", track_ids).fetchall()
+        by_id = {int(row["id"]): dict(row) for row in rows}
+        return [by_id[track_id] for track_id in track_ids if track_id in by_id]
+
+    def queue_view(self, account_id: int) -> dict[str, object]:
+        """Return a path-free browser view of the current playback order."""
+        with self.lock:
+            current = dict(self.playback.get(account_id, {}))
+            track_id = int(current.get("track_id", 0))
+            scope = str(current.get("scope", ""))
+            history = [int(value) for value in current.get("history", [])
+                       if isinstance(value, int)]
+            current_rows = self._queue_tracks([track_id]) if track_id else []
+            current_track = current_rows[0] if current_rows else None
+            if self.dynamic_playlists.get(scope) == DYNAMIC_ALL:
+                total = int(self.db.execute(
+                    "SELECT count(*) FROM tracks WHERE available=1").fetchone()[0])
+                playlist = self.db.execute(
+                    "SELECT name FROM playlists WHERE slug=?", (scope,)).fetchone()
+                return {
+                    "dynamic": DYNAMIC_ALL,
+                    "label": str(playlist["name"]) if playlist else "Shuffle Everything",
+                    "mode": "shuffle", "total": total,
+                    "current": current_track,
+                    "recent": list(reversed(self._queue_tracks(history[-12:]))),
+                    "up_next": [],
+                }
+            queue = self._available_queue(current.get("queue", []))
+            mode = str(current.get("mode", "sequential"))
+            if mode == "shuffle":
+                bag = [int(value) for value in current.get("shuffle_bag", [])
+                       if isinstance(value, int) and int(value) in queue
+                       and int(value) != track_id]
+                upcoming = list(reversed(bag))
+            elif track_id in queue:
+                position = queue.index(track_id)
+                upcoming = queue[position + 1:] + queue[:position]
+            else:
+                upcoming = queue
+            return {
+                "dynamic": "", "label": "Current queue", "mode": mode,
+                "total": len(queue),
+                "current": current_track,
+                "recent": list(reversed(self._queue_tracks(history[-12:]))),
+                "up_next": self._queue_tracks(upcoming),
+            }
+
+    def _random_available(self, excluded: list[int]) -> int:
+        unique = list(dict.fromkeys(value for value in excluded if value > 0))[-101:]
+        where = "available=1"
+        parameters: list[object] = []
+        if unique:
+            where += " AND id NOT IN (" + ",".join("?" for _ in unique) + ")"
+            parameters.extend(unique)
+        row = self.db.execute(
+            "SELECT id FROM tracks WHERE " + where + " ORDER BY random() LIMIT 1",
+            parameters).fetchone()
+        if row is None:
+            row = self.db.execute(
+                "SELECT id FROM tracks WHERE available=1 ORDER BY random() LIMIT 1"
+            ).fetchone()
+        if row is None:
+            raise RPCError("music catalog is empty")
+        return int(row["id"])
+
     def _move(self, account_id: int, backwards: bool = False) -> dict[str, object]:
         with self.lock:
             current = self.playback.get(account_id)
             if not current or current.get("action") not in ("play", "pause"):
+                return self.state(account_id)
+            if self.dynamic_playlists.get(str(current.get("scope", ""))) == DYNAMIC_ALL:
+                track_id = int(current.get("track_id", 0))
+                history = [int(value) for value in current.get("history", [])
+                           if isinstance(value, int)]
+                if backwards and history:
+                    selected = history.pop()
+                else:
+                    selected = self._random_available(history + [track_id])
+                    if track_id:
+                        history.append(track_id)
+                current.update({
+                    "serial": int(current.get("serial", 0)) + 1,
+                    "action": "play", "resume": False, "track_id": selected,
+                    "queue": [selected], "mode": "shuffle", "shuffle_bag": [],
+                    "history": history[-MAX_RESULTS:],
+                })
+                self._save_playback(account_id)
                 return self.state(account_id)
             queue = self._available_queue(current.get("queue", []))
             if not queue:
@@ -846,6 +979,10 @@ class Music:
             return self._new_pair(ident, str(req["token"]))
         if op == "status":
             return self.state(int(ident["account_id"]))
+        if op == "queue":
+            if data:
+                raise RPCError("invalid queue request")
+            return self.queue_view(int(ident["account_id"]))
         if op in ("play", "pause", "stop", "resume"):
             track_id = 0
             if op == "play":
@@ -854,7 +991,7 @@ class Music:
                 raise RPCError("invalid playback request")
             account_id = int(ident["account_id"])
             result = self.command(account_id, op, track_id,
-                                  data.get("queue"), data.get("mode"))
+                                  data.get("queue"), data.get("mode"), data.get("scope"))
             if op in ("play", "resume") and not self.browser_active(account_id):
                 result["pair_url"] = self._new_pair(
                     ident, str(req["token"]))["url"]
@@ -880,79 +1017,134 @@ class Music:
         raise RPCError("unknown operation")
 
 
+def _artwork_svg() -> bytes:
+    return b"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+<defs><radialGradient id="space"><stop stop-color="#1d2442"/><stop offset="1" stop-color="#080914"/></radialGradient>
+<linearGradient id="mars" x2="1" y2="1"><stop stop-color="#ffb057"/><stop offset=".52" stop-color="#dc5745"/><stop offset="1" stop-color="#702d4d"/></linearGradient>
+<filter id="glow"><feGaussianBlur stdDeviation="7" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>
+<rect width="512" height="512" rx="72" fill="url(#space)"/><g fill="#39e69d" opacity=".25">
+<circle cx="52" cy="80" r="2"/><circle cx="428" cy="66" r="3"/><circle cx="467" cy="177" r="2"/><circle cx="74" cy="384" r="3"/><circle cx="404" cy="424" r="2"/></g>
+<circle cx="256" cy="216" r="126" fill="url(#mars)" filter="url(#glow)"/><path d="M153 205c64-27 140-27 206 0M158 251c58 21 136 21 196 0" fill="none" stroke="#ffca78" stroke-width="12" opacity=".45"/>
+<path d="M97 350h318" stroke="#2d9cff" stroke-width="5"/><g fill="#39e69d">
+<rect x="112" y="331" width="14" height="19"/><rect x="139" y="310" width="14" height="40"/><rect x="166" y="321" width="14" height="29"/><rect x="193" y="294" width="14" height="56"/><rect x="220" y="314" width="14" height="36"/><rect x="247" y="282" width="14" height="68"/><rect x="274" y="306" width="14" height="44"/><rect x="301" y="288" width="14" height="62"/><rect x="328" y="318" width="14" height="32"/><rect x="355" y="303" width="14" height="47"/><rect x="382" y="326" width="14" height="24"/></g>
+<text x="256" y="406" fill="#f8fbff" font-family="monospace" font-size="49" font-weight="700" text-anchor="middle" letter-spacing="5">MARSAMP</text>
+<text x="256" y="445" fill="#2d9cff" font-family="monospace" font-size="18" text-anchor="middle" letter-spacing="6">THE MARS HOTEL</text></svg>"""
+
+
+def _artwork_png(size: int) -> bytes:
+    if size not in (192, 512):
+        raise ValueError("unsupported artwork size")
+    filename = Path(__file__).resolve().parents[1] / "assets" / f"marsamp-artwork-{size}.png"
+    return filename.read_bytes()
+
+
+def _player_manifest(base_path: str) -> bytes:
+    return json.dumps({
+        "name": "MarsAmp at The Mars Hotel", "short_name": "MarsAmp",
+        "description": "Authenticated music from The Mars Hotel BBS",
+        "start_url": (base_path or "/") + "/" if base_path else "/",
+        "scope": (base_path or "/") + "/" if base_path else "/",
+        "display": "standalone", "background_color": "#080914",
+        "theme_color": "#11162a",
+        "icons": [
+            {"src": (base_path or "") + "/artwork-192.png",
+             "sizes": "192x192", "type": "image/png", "purpose": "any maskable"},
+            {"src": (base_path or "") + "/artwork-512.png",
+             "sizes": "512x512", "type": "image/png", "purpose": "any maskable"},
+        ],
+    }, separators=(",", ":")).encode("ascii")
+
+
 def _player_html(base_path: str) -> bytes:
-    base = json.dumps(base_path)
-    page = f"""<!doctype html>
+    page = """<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>MarsAmp Audio Sink</title>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#11162a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="MarsAmp">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="artwork-192.png" type="image/png">
+<link rel="apple-touch-icon" href="artwork-192.png">
+<title>MarsAmp • The Mars Hotel</title>
 <style>
-:root{{--green:#36d07c;--blue:#2d9cff;--bg:#111326;--panel:#171a30}}
-*{{box-sizing:border-box}} body{{margin:0;background:var(--bg);color:var(--green);
-font:16px ui-monospace,SFMono-Regular,Consolas,monospace;display:grid;min-height:100vh;
-place-items:center}} main{{width:min(94vw,620px);border:3px double var(--blue);padding:16px;
-background:var(--panel);box-shadow:0 0 32px #000}} h1{{color:var(--blue);font-size:1.3rem}}
-#track{{min-height:3em}} #hint{{min-height:3em;color:#f4d35e;line-height:1.4}}
-button{{background:#202743;color:var(--green);border:1px solid var(--green);
-font:inherit;padding:.65em 1em;margin:.2em}} button:active{{background:var(--green);color:#111326}}
-#enable{{display:block;width:100%;margin:.5em 0 1em;background:var(--green);color:#111326;
-font-weight:800;font-size:1.05rem;border:3px double #111326;box-shadow:0 0 0 2px var(--green)}}
-#enable.attention{{animation:pulse 1.2s steps(2,end) infinite}}
-@keyframes pulse{{50%{{background:#f4d35e;box-shadow:0 0 18px #f4d35e}}}}
-@media (prefers-reduced-motion:reduce){{#enable.attention{{animation:none}}}}
-.meter{{height:50px;display:flex;gap:4px;align-items:end;margin:14px 0}}
-.meter i{{display:block;width:7%;background:var(--green);height:20%}}
-small{{display:block;color:#a6afc8;margin-top:12px;line-height:1.4}}
-</style></head><body><main><h1>MARSAMP // AUDIO SINK</h1>
-<div id="track">Paired with The Mars Hotel. Loading the selected song...</div>
-<div id="hint" role="status">Attempting to start audio automatically.</div>
-<div id="mode">PLAY MODE: SEQUENTIAL</div>
-<div class="meter" id="meter"></div><audio id="audio" preload="metadata" autoplay playsinline></audio>
-<div><button id="enable" type="button">&#9654; PLAY SELECTED SONG</button><button id="pause">Pause</button>
-<button id="stop">Stop</button></div>
-<div><button id="previous" type="button">&#9664; BACK</button>
-<button id="next" type="button">FORWARD &#9654;</button></div>
-<small>Keep this page open while controlling MarsAmp through SSH. No NAS path or BBS
-credential is stored in this page.</small></main><script>
-const BASE={base}; const audio=document.getElementById('audio'); let enabled=false, serial=-1;
-const meter=document.getElementById('meter'); const enable=document.getElementById('enable');
-const hint=document.getElementById('hint'); const mode=document.getElementById('mode');
-for(let i=0;i<12;i++)meter.appendChild(document.createElement('i'));
-function bars(on){{[...meter.children].forEach((b,i)=>b.style.height=on?(20+((Date.now()/160+i*29)%75))+'%':'8%')}}
-function needsTap(){{enabled=false;enable.classList.add('attention');
-hint.textContent='Your browser blocked automatic audio. Tap PLAY SELECTED SONG once.';}}
-function audioReady(){{enabled=true;enable.classList.remove('attention');
-hint.textContent='Audio enabled. Keep this page open and choose songs through the BBS.';}}
-async function beginPlayback(){{if(!audio.src){{hint.textContent='Waiting for the selected song...';return}}
-try{{await audio.play();audioReady()}}catch(e){{needsTap()}}}}
-enable.onclick=beginPlayback;
-document.getElementById('pause').onclick=()=>audio.pause();
-document.getElementById('stop').onclick=()=>{{audio.pause();audio.currentTime=0}};
-function sessionEnded(){{audio.pause();audio.removeAttribute('src');audio.load();
-document.getElementById('track').textContent='BBS session ended. Pair again.';
-hint.textContent='Playback authorization ended.';bars(false)}}
-async function applyState(s){{if(s.track)document.getElementById('track').textContent=
-(s.track.artist?s.track.artist+' - ':'')+s.track.title;
-mode.textContent='PLAY MODE: '+String(s.mode||'sequential').toUpperCase();
-if(s.serial!==serial){{serial=s.serial;if(s.action==='play'&&s.stream){{
-if(!s.resume||!audio.src)audio.src=s.stream;await beginPlayback();}}else if(s.action==='pause')audio.pause();
-else if(s.action==='stop'){{audio.pause();audio.removeAttribute('src');audio.load();}}}}
-bars(!audio.paused)}}
-async function navigate(path,label){{hint.textContent=label;
-try{{let r=await fetch(BASE+path,{{method:'POST',credentials:'same-origin'}});
-if(r.status===401){{sessionEnded();return}}if(!r.ok)throw new Error('request failed');
-await applyState(await r.json())}}catch(e){{hint.textContent='Unable to change songs. Check the connection.';}}}}
-document.getElementById('previous').onclick=()=>navigate('/api/previous','Loading the previous song...');
-document.getElementById('next').onclick=()=>navigate('/api/advance','Loading the next song...');
-async function poll(){{try{{let r=await fetch(BASE+'/api/state',{{cache:'no-store'}});
-if(r.status===401){{sessionEnded();return}}await applyState(await r.json());
-setTimeout(poll,750)}}catch(e){{setTimeout(poll,2000)}}}} poll();
-audio.addEventListener('ended',async()=>{{hint.textContent='Loading the next song...';
-try{{let r=await fetch(BASE+'/api/advance',{{method:'POST',credentials:'same-origin'}});
-if(!r.ok)hint.textContent='Unable to advance. Return to the BBS and pair again.';
-}}catch(e){{hint.textContent='Unable to advance. Check the connection.';}}}});
+:root{color-scheme:dark;--green:#39e69d;--blue:#47a9ff;--amber:#ffc65a;--ink:#080914;
+--panel:#11162a;--panel2:#171e36;--line:#2a3659;--muted:#9aa7c2;--white:#f6f8ff}
+*{box-sizing:border-box} html{background:var(--ink)} body{margin:0;min-height:100vh;min-height:100dvh;
+background:radial-gradient(circle at 50% -10%,#27345e 0,#11152a 38%,#080914 80%);
+color:var(--white);font:15px ui-monospace,SFMono-Regular,Consolas,monospace;padding:max(18px,env(safe-area-inset-top)) 14px max(22px,env(safe-area-inset-bottom))}
+main{width:min(100%,720px);margin:auto;border:1px solid #3b4d7a;border-radius:24px;overflow:hidden;
+background:linear-gradient(155deg,rgba(25,33,60,.98),rgba(10,12,25,.98));box-shadow:0 24px 80px #000b,0 0 0 1px #47a9ff20 inset}
+header{display:flex;align-items:center;justify-content:space-between;padding:18px 20px;border-bottom:1px solid var(--line)}
+.brand{color:var(--blue);font-weight:900;letter-spacing:.16em;font-size:1.18rem}.live{color:var(--green);font-size:.72rem;letter-spacing:.12em;border:1px solid #39e69d55;border-radius:999px;padding:6px 10px}
+.stage{display:grid;grid-template-columns:190px 1fr;gap:24px;padding:24px}.art{aspect-ratio:1;border-radius:20px;background:#0c1020 url('artwork-512.png') center/cover no-repeat;box-shadow:0 14px 34px #0009,0 0 22px #2d9cff35;border:1px solid #5870a4}
+.now{min-width:0;display:flex;flex-direction:column;justify-content:center}.eyebrow{color:var(--green);letter-spacing:.14em;font-size:.72rem;margin-bottom:10px}.title{font:800 clamp(1.35rem,4vw,2.2rem)/1.12 system-ui,sans-serif;overflow-wrap:anywhere}.artist{margin-top:9px;color:#cbd4e9;font:600 1rem system-ui,sans-serif}.album{margin-top:5px;color:var(--muted);font:.88rem system-ui,sans-serif}
+.timeline{padding:0 24px 6px}.time-row{display:flex;align-items:center;gap:12px;color:var(--muted);font-size:.75rem}.time-row output{width:46px}.time-row output:last-child{text-align:right}input[type=range]{width:100%;accent-color:var(--green)}
+.meter{height:36px;display:flex;gap:4px;align-items:end;margin:10px 0}.meter i{flex:1;max-width:18px;background:linear-gradient(var(--green),var(--blue));height:12%;border-radius:3px 3px 0 0;transition:height .2s}
+.controls{display:grid;grid-template-columns:repeat(5,1fr);gap:9px;padding:14px 24px 20px}button{appearance:none;border:1px solid #465b8d;border-radius:13px;background:#171f39;color:var(--white);font:700 .82rem ui-monospace,monospace;padding:13px 8px;min-height:48px;box-shadow:0 5px 14px #0005;touch-action:manipulation}button:active{transform:translateY(1px);background:#223052}button.primary{color:#07120e;background:linear-gradient(135deg,#55f0ad,#2dcf82);border-color:#8dffd0;font-size:1rem}button.danger{color:#ffc7c7}button.attention{animation:pulse 1.2s steps(2,end) infinite}
+@keyframes pulse{50%{box-shadow:0 0 24px #ffc65a;background:var(--amber)}}.status{margin:0 24px 16px;padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:#0b0f20;color:var(--amber);min-height:44px;line-height:1.35}.mode{color:var(--blue);font-size:.76rem;letter-spacing:.08em;padding:0 24px 14px}
+details{border-top:1px solid var(--line);background:#0b0f1d}summary{cursor:pointer;list-style:none;padding:17px 22px;color:var(--green);font-weight:800;letter-spacing:.08em}summary::-webkit-details-marker{display:none}summary::after{content:'+';float:right;color:var(--blue);font-size:1.25rem}details[open] summary::after{content:'–'}.queue-meta{padding:0 22px 12px;color:var(--muted);font-size:.8rem}.queue{list-style:none;margin:0;padding:0 14px 18px;max-height:40vh;overflow:auto;overscroll-behavior:contain}.queue li{padding:11px 10px;border-top:1px solid #202945;display:grid;grid-template-columns:32px 1fr;gap:10px}.queue .number{color:var(--blue);text-align:right}.queue strong{display:block;color:var(--white);font:650 .9rem system-ui,sans-serif}.queue span{color:var(--muted);font: .78rem system-ui,sans-serif}.queue .current strong{color:var(--green)}footer{padding:14px 22px;color:#7f8ba8;font-size:.72rem;line-height:1.5;border-top:1px solid var(--line)}
+@media(max-width:560px){body{padding-left:8px;padding-right:8px}.stage{grid-template-columns:112px 1fr;gap:16px;padding:18px}.controls{padding-left:14px;padding-right:14px;gap:6px}.controls button{font-size:.72rem;padding:10px 4px}.timeline{padding-left:16px;padding-right:16px}.status,.mode{margin-left:16px;margin-right:16px}.mode{padding-left:0}.brand{font-size:1rem}}
+@media(max-width:390px){.stage{grid-template-columns:88px 1fr}.controls{grid-template-columns:repeat(3,1fr)}.controls .primary{grid-column:auto}.title{font-size:1.18rem}}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style></head><body><main>
+<header><div class="brand">MARSAMP</div><div class="live">● SECURE AUDIO LINK</div></header>
+<section class="stage"><div class="art" role="img" aria-label="MarsAmp artwork"></div><div class="now">
+<div class="eyebrow">NOW TRANSMITTING</div><div id="title" class="title">Waiting for a selection…</div>
+<div id="artist" class="artist">The Mars Hotel BBS</div><div id="album" class="album">Authenticated private player</div>
+<div class="meter" id="meter" aria-hidden="true"></div></div></section>
+<section class="timeline"><div class="time-row"><output id="elapsed">0:00</output><input id="seek" type="range" min="0" max="1000" value="0" aria-label="Playback position"><output id="duration">0:00</output></div></section>
+<section class="controls" aria-label="Playback controls">
+<button id="previous" type="button" aria-label="Previous track">◀ BACK</button>
+<button id="pause" type="button" aria-label="Pause">Ⅱ PAUSE</button>
+<button id="enable" class="primary" type="button" aria-label="Play">▶ PLAY</button>
+<button id="stop" class="danger" type="button" aria-label="Stop">■ STOP</button>
+<button id="next" type="button" aria-label="Next track">NEXT ▶</button></section>
+<div id="hint" class="status" role="status">Attempting to start audio automatically.</div>
+<div id="mode" class="mode">PLAY MODE: SEQUENTIAL</div>
+<details id="queue-panel"><summary id="queue-summary">QUEUE · loading</summary><div id="queue-meta" class="queue-meta"></div><ol id="queue" class="queue"></ol></details>
+<footer>Keep this page open while controlling MarsAmp through SSH. Lock-screen controls use this authenticated browser session. No NAS path, BBS password, or internal service address is stored here.</footer>
+<audio id="audio" preload="metadata" autoplay playsinline></audio>
+</main><script>
+const BASE=__BASE__;const ART192=new URL(BASE+'/artwork-192.png',location.origin).href;const ART512=new URL(BASE+'/artwork-512.png',location.origin).href;
+const audio=document.getElementById('audio'),meter=document.getElementById('meter');
+const enable=document.getElementById('enable'),hint=document.getElementById('hint');
+const mode=document.getElementById('mode'),titleEl=document.getElementById('title');
+const artistEl=document.getElementById('artist'),albumEl=document.getElementById('album');
+const seek=document.getElementById('seek'),elapsed=document.getElementById('elapsed');
+const durationEl=document.getElementById('duration'),queueEl=document.getElementById('queue');
+const queueSummary=document.getElementById('queue-summary'),queueMeta=document.getElementById('queue-meta');
+let enabled=false,serial=-1,currentTrack=null,serverAction='stop';
+for(let i=0;i<18;i++)meter.appendChild(document.createElement('i'));
+const text=value=>String(value||'').replace(/[<>]/g,'');
+function clock(value){if(!Number.isFinite(value))return '0:00';let seconds=Math.max(0,Math.floor(value));return Math.floor(seconds/60)+':'+String(seconds%60).padStart(2,'0')}
+function bars(on){[...meter.children].forEach((bar,i)=>bar.style.height=on?(18+((Date.now()/145+i*31)%80))+'%':'10%')}
+function needsTap(){enabled=false;enable.classList.add('attention');hint.textContent='Your browser blocked automatic audio. Tap PLAY once.'}
+function audioReady(){enabled=true;enable.classList.remove('attention');hint.textContent='Audio enabled. MarsAmp will continue through the current queue.'}
+async function beginPlayback(){if(!audio.src){hint.textContent='Choose a song in the BBS or queue first.';return}try{await audio.play();audioReady()}catch(error){needsTap()}}
+function sessionEnded(){audio.pause();audio.removeAttribute('src');audio.load();titleEl.textContent='Session ended';artistEl.textContent='Pair MarsAmp again from the BBS';albumEl.textContent='';hint.textContent='Playback authorization ended.';bars(false);setMediaState('none')}
+function setMediaState(value){if('mediaSession' in navigator){try{navigator.mediaSession.playbackState=value}catch(error){}}}
+function updateMetadata(track){if(!track)return;currentTrack=track;const song=text(track.title)||'Untitled';const artist=text(track.artist)||'The Mars Hotel';const album=text(track.album)||'MarsAmp';document.title=song+' • MarsAmp';
+if('mediaSession' in navigator&&window.MediaMetadata){navigator.mediaSession.metadata=new MediaMetadata({title:song,artist:artist,album:album,artwork:[{src:ART192,sizes:'192x192',type:'image/png'},{src:ART512,sizes:'512x512',type:'image/png'}]})}}
+function updatePosition(){elapsed.value=clock(audio.currentTime);durationEl.value=clock(audio.duration);seek.value=Number.isFinite(audio.duration)&&audio.duration>0?Math.round(audio.currentTime/audio.duration*1000):0;
+if('mediaSession' in navigator&&Number.isFinite(audio.duration)&&audio.duration>0){try{navigator.mediaSession.setPositionState({duration:audio.duration,playbackRate:audio.playbackRate,position:Math.min(audio.currentTime,audio.duration)})}catch(error){}}}
+function queueRow(track,index,current=false){const item=document.createElement('li');if(current)item.className='current';const number=document.createElement('div');number.className='number';number.textContent=current?'▶':String(index).padStart(2,'0');const copy=document.createElement('div');const strong=document.createElement('strong');strong.textContent=text(track.title)||'Untitled';const detail=document.createElement('span');detail.textContent=[text(track.artist),text(track.album)].filter(Boolean).join(' · ');copy.append(strong,detail);item.append(number,copy);return item}
+async function loadQueue(){try{const response=await fetch(BASE+'/api/queue',{cache:'no-store'});if(response.status===401){sessionEnded();return}if(!response.ok)throw new Error('queue unavailable');const data=await response.json();queueEl.replaceChildren();queueSummary.textContent=(data.label||'QUEUE')+' · '+Number(data.total||0).toLocaleString()+' tracks';
+if(data.dynamic){queueMeta.textContent='Full-library shuffle selects each next track directly from the live catalog.';if(data.current)queueEl.append(queueRow(data.current,0,true));const waiting=document.createElement('li');waiting.textContent='∞ Next selection is drawn when playback advances.';queueEl.append(waiting)}else{queueMeta.textContent=(data.mode||'sequential').toUpperCase()+' · upcoming playback order';if(data.current)queueEl.append(queueRow(data.current,0,true));(data.up_next||[]).forEach((track,index)=>queueEl.append(queueRow(track,index+1)))}
+}catch(error){queueSummary.textContent='QUEUE · temporarily unavailable'}}
+async function applyState(state){serverAction=state.action||'stop';const track=state.track;if(track){titleEl.textContent=text(track.title)||'Untitled';artistEl.textContent=text(track.artist)||'Unknown artist';albumEl.textContent=text(track.album)||'The Mars Hotel collection';updateMetadata(track)}else if(serverAction==='stop'){titleEl.textContent='Playback stopped';artistEl.textContent='Choose a song in the BBS';albumEl.textContent='MarsAmp is ready'}mode.textContent='PLAY MODE: '+String(state.mode||'sequential').toUpperCase();
+if(state.serial!==serial){serial=state.serial;if(state.action==='play'&&state.stream){if(!state.resume||!audio.src)audio.src=state.stream;await beginPlayback()}else if(state.action==='pause')audio.pause();else if(state.action==='stop'){audio.pause();audio.removeAttribute('src');audio.load()}await loadQueue()}bars(!audio.paused)}
+async function navigate(path,label){hint.textContent=label;try{const response=await fetch(BASE+path,{method:'POST',credentials:'same-origin'});if(response.status===401){sessionEnded();return}if(!response.ok)throw new Error('request failed');await applyState(await response.json())}catch(error){hint.textContent='Unable to change songs. Check the connection.'}}
+async function poll(){try{const response=await fetch(BASE+'/api/state',{cache:'no-store'});if(response.status===401){sessionEnded();return}await applyState(await response.json());setTimeout(poll,750)}catch(error){setTimeout(poll,2000)}}
+enable.onclick=()=>serverAction==='pause'?navigate('/api/resume','Resuming playback…'):beginPlayback();document.getElementById('pause').onclick=()=>navigate('/api/pause','Pausing playback…');document.getElementById('stop').onclick=()=>navigate('/api/stop','Stopping playback…');
+document.getElementById('previous').onclick=()=>navigate('/api/previous','Loading the previous song…');document.getElementById('next').onclick=()=>navigate('/api/advance','Loading the next song…');
+seek.addEventListener('input',()=>{if(Number.isFinite(audio.duration))audio.currentTime=audio.duration*Number(seek.value)/1000});
+audio.addEventListener('timeupdate',updatePosition);audio.addEventListener('durationchange',updatePosition);audio.addEventListener('play',()=>{enable.textContent='▶ PLAYING';bars(true);setMediaState('playing')});audio.addEventListener('pause',()=>{enable.textContent='▶ PLAY';bars(false);setMediaState('paused')});
+audio.addEventListener('ended',()=>navigate('/api/advance','Loading the next song…'));document.getElementById('queue-panel').addEventListener('toggle',event=>{if(event.target.open)loadQueue()});
+if('mediaSession' in navigator){const action=(name,handler)=>{try{navigator.mediaSession.setActionHandler(name,handler)}catch(error){}};action('play',()=>serverAction==='pause'?navigate('/api/resume','Resuming playback…'):beginPlayback());action('pause',()=>navigate('/api/pause','Pausing playback…'));action('stop',()=>navigate('/api/stop','Stopping playback…'));action('previoustrack',()=>navigate('/api/previous','Loading the previous song…'));action('nexttrack',()=>navigate('/api/advance','Loading the next song…'));action('seekbackward',details=>{audio.currentTime=Math.max(0,audio.currentTime-(details.seekOffset||10))});action('seekforward',details=>{audio.currentTime=Math.min(audio.duration||audio.currentTime,audio.currentTime+(details.seekOffset||10))});action('seekto',details=>{if(details.seekTime!=null)audio.currentTime=details.seekTime})}
+poll();
 </script></body></html>"""
-    return page.encode("utf-8")
+    return page.replace("__BASE__", json.dumps(base_path)).encode("utf-8")
 
 
 class MusicHTTP(BaseHTTPRequestHandler):
@@ -976,7 +1168,8 @@ class MusicHTTP(BaseHTTPRequestHandler):
         self.send_header("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
         self.send_header("Content-Security-Policy",
                          "default-src 'self'; style-src 'unsafe-inline'; "
-                         "script-src 'unsafe-inline'; media-src 'self'")
+                         "script-src 'unsafe-inline'; media-src 'self'; "
+                         "img-src 'self'; manifest-src 'self'")
         for key, value in (extra or {}).items():
             self.send_header(key, value)
         self.end_headers()
@@ -1011,6 +1204,22 @@ class MusicHTTP(BaseHTTPRequestHandler):
         if path is None:
             self._headers(404, "text/plain; charset=utf-8")
             return
+        if path == "/artwork.svg":
+            payload = _artwork_svg()
+            self._headers(200, "image/svg+xml", len(payload))
+            self.wfile.write(payload)
+            return
+        artwork = re.fullmatch(r"/artwork-(192|512)\.png", path)
+        if artwork:
+            payload = _artwork_png(int(artwork.group(1)))
+            self._headers(200, "image/png", len(payload))
+            self.wfile.write(payload)
+            return
+        if path == "/manifest.webmanifest":
+            payload = _player_manifest(self.music.base_path)
+            self._headers(200, "application/manifest+json", len(payload))
+            self.wfile.write(payload)
+            return
         if path.startswith("/pair/"):
             ticket = unquote(path.removeprefix("/pair/"))
             try:
@@ -1038,6 +1247,9 @@ class MusicHTTP(BaseHTTPRequestHandler):
             if path == "/api/state":
                 self._json(self.music.state(int(ident["account_id"])))
                 return
+            if path == "/api/queue":
+                self._json(self.music.queue_view(int(ident["account_id"])))
+                return
             match = re.fullmatch(r"/audio/([1-9][0-9]{0,9})", path)
             if match:
                 self._stream(integer(int(match.group(1)), "track id"), head=False)
@@ -1062,7 +1274,11 @@ class MusicHTTP(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:  # noqa: N802 - stdlib handler contract
         path = self._path()
-        if path not in ("/api/advance", "/api/previous"):
+        operations = {
+            "/api/advance": "advance", "/api/previous": "previous",
+            "/api/pause": "pause", "/api/resume": "resume", "/api/stop": "stop",
+        }
+        if path not in operations:
             self._headers(404, "text/plain; charset=utf-8")
             return
         if self.headers.get("Origin") != self.music.public_origin:
@@ -1070,8 +1286,15 @@ class MusicHTTP(BaseHTTPRequestHandler):
             return
         try:
             ident = self._identity()
-            move = self.music.previous if path == "/api/previous" else self.music.advance
-            self._json(move(int(ident["account_id"])))
+            account_id = int(ident["account_id"])
+            operation = operations[path]
+            if operation == "advance":
+                result = self.music.advance(account_id)
+            elif operation == "previous":
+                result = self.music.previous(account_id)
+            else:
+                result = self.music.command(account_id, operation)
+            self._json(result)
         except RPCError as exc:
             self._json({"error": str(exc)}, 401)
 
