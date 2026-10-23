@@ -305,6 +305,11 @@ class MusicTests(unittest.TestCase):
         self.assertIn("mediaSession.setActionHandler", page)
         self.assertIn("manifest.webmanifest", page)
         self.assertIn("audio.addEventListener('ended'", page)
+        self.assertIn('id="output"', page)
+        self.assertIn('x-webkit-airplay="allow"', page)
+        self.assertIn("webkitShowPlaybackTargetPicker", page)
+        self.assertIn("audio.remote.prompt()", page)
+        self.assertIn("state.output_stream", page)
 
     def test_playback_list_advances_and_wraps(self) -> None:
         with patch("marsv2.musicd.validate", return_value=IDENTITY):
@@ -545,6 +550,88 @@ class MusicTests(unittest.TestCase):
             self.assertEqual(response.getheader("Content-Range"),
                              f"bytes 3-6/{len(self.payload)}")
             self.assertEqual(body, self.payload[3:7])
+        finally:
+            server.shutdown()
+            server.server_close()
+
+    def test_remote_output_stream_is_short_lived_track_capability(self) -> None:
+        track_id = int(self.music._search("Track One", 0, 10)["tracks"][0]["id"])
+        with patch("marsv2.musicd.validate", return_value=IDENTITY):
+            self.music.handle(self.request("play", {"id": track_id}),
+                              (1, 29901, 29901))
+            pair = self.music.handle(self.request("pair"), (1, 29901, 29901))
+        browser = self.redeem(str(pair["url"]))
+        MusicHTTP.music = self.music
+        server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), MusicHTTP)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            with patch("marsv2.musicd.request",
+                       return_value={"ok": True, "data": IDENTITY}):
+                connection = http.client.HTTPConnection(
+                    "127.0.0.1", server.server_port, timeout=3)
+                connection.request("GET", "/marsamp/api/state", headers={
+                    "Cookie": "marsamp_session=" + browser,
+                })
+                response = connection.getresponse()
+                state = json.loads(response.read())
+                connection.close()
+            signed_url = str(state["output_stream"])
+            self.assertNotIn(browser, signed_url)
+            self.assertNotIn(self.temporary.name, signed_url)
+            self.assertRegex(
+                signed_url,
+                r"^/marsamp/stream/[0-9]+/[0-9a-f]{16}/"
+                r"[0-9]{9,12}/[0-9a-f]{64}$",
+            )
+
+            connection = http.client.HTTPConnection(
+                "127.0.0.1", server.server_port, timeout=3)
+            connection.request("GET", signed_url, headers={"Range": "bytes=3-6"})
+            response = connection.getresponse()
+            payload = response.read()
+            connection.close()
+            self.assertEqual(response.status, 206)
+            self.assertEqual(response.getheader("Cache-Control"),
+                             "private, max-age=900")
+            self.assertEqual(payload, self.payload[3:7])
+
+            connection = http.client.HTTPConnection(
+                "127.0.0.1", server.server_port, timeout=3)
+            connection.request("GET", f"/marsamp/audio/{track_id}")
+            denied = connection.getresponse()
+            denied.read()
+            connection.close()
+            self.assertEqual(denied.status, 401)
+
+            tampered = signed_url[:-1] + ("0" if signed_url[-1] != "0" else "1")
+            connection = http.client.HTTPConnection(
+                "127.0.0.1", server.server_port, timeout=3)
+            connection.request("GET", tampered)
+            rejected = connection.getresponse()
+            rejected.read()
+            connection.close()
+            self.assertEqual(rejected.status, 403)
+
+            wrong_track = signed_url.replace(
+                f"/stream/{track_id}/", f"/stream/{track_id + 1}/")
+            connection = http.client.HTTPConnection(
+                "127.0.0.1", server.server_port, timeout=3)
+            connection.request("GET", wrong_track)
+            rejected = connection.getresponse()
+            rejected.read()
+            connection.close()
+            self.assertEqual(rejected.status, 403)
+
+            expires = int(signed_url.rsplit("/", 2)[1])
+            with patch("marsv2.musicd.time.time", return_value=expires + 1):
+                connection = http.client.HTTPConnection(
+                    "127.0.0.1", server.server_port, timeout=3)
+                connection.request("HEAD", signed_url)
+                rejected = connection.getresponse()
+                rejected.read()
+                connection.close()
+            self.assertEqual(rejected.status, 403)
         finally:
             server.shutdown()
             server.server_close()

@@ -115,3 +115,17 @@ Validated on 2026-10-23 for the saved compact-player layout toggle:
 The new player defaults to three lines, with the transport keys in its bottom
 border. Four-line mode keeps a separate transport row. The main prompt is now
 `Main Lobby`. Both changes are included with the layout setting.
+
+
+MarsAmp remote-output release checks include:
+
+- AirPlay markup, the native WebKit playback-target picker and the W3C Remote
+  Playback picker are present without loading a third-party JavaScript SDK
+- signed stream URLs contain only opaque IDs, versions, expiry and HMAC values;
+  browser cookies, filesystem paths and credentials are absent
+- anonymous cookie-authenticated audio remains denied while a valid receiver
+  capability supports byte ranges; tampering and expiration return HTTP 403
+- automatic track advance selects a fresh receiver URL while remote playback
+  is connected, preserving the queue and shuffle behavior
+- unsupported browsers keep ordinary local playback and show a system-output
+  fallback message rather than exposing or weakening the stream
