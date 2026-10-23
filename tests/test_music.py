@@ -10,7 +10,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from marsv2.musicd import Music, MusicHTTP, _player_html
+from marsv2.musicd import Music, MusicHTTP, _display_title, _player_html
 from marsv2.rpc import RPCError
 
 
@@ -106,6 +106,24 @@ class MusicTests(unittest.TestCase):
                                                            "offset": 0}),
                                   (1, 29901, 29901))
 
+    def test_track_numbers_are_hidden_only_in_presented_titles(self) -> None:
+        self.assertEqual(_display_title("06 Hot For Teacher"), "Hot For Teacher")
+        self.assertEqual(_display_title("1-06 - Panama"), "Panama")
+        self.assertEqual(_display_title("16_dressed_up"), "dressed_up")
+        self.assertEqual(_display_title("1999"), "1999")
+        self.assertEqual(_display_title("867-5309_Jenny"), "867-5309_Jenny")
+        with self.music.db:
+            self.music.db.execute(
+                "UPDATE tracks SET title=? WHERE title=?",
+                ("06 Track One", "Track One"),
+            )
+        presented = self.music._search("Track One", 0, 10)["tracks"][0]
+        self.assertEqual(presented["title"], "Track One")
+        stored = self.music.db.execute(
+            "SELECT title FROM tracks WHERE id=?", (presented["id"],)
+        ).fetchone()[0]
+        self.assertEqual(stored, "06 Track One")
+
     def test_pair_ticket_is_single_use_and_session_bound(self) -> None:
         with patch("marsv2.musicd.validate", return_value=IDENTITY):
             paired = self.music.handle(self.request("pair"), (1, 29901, 29901))
@@ -166,6 +184,7 @@ class MusicTests(unittest.TestCase):
         self.assertIn("image.sizes='any'", page)
         self.assertIn("mediaArtworkData||ART512", page)
         self.assertIn("scheduleMetadataRefresh(key)", page)
+        self.assertIn("artist+' · '+album", page)
         self.assertIn("audio.addEventListener('loadedmetadata'", page)
         self.assertIn("audio.addEventListener('playing',refreshMetadata)", page)
         self.assertIn("mediaSession.setActionHandler", page)
