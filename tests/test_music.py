@@ -162,7 +162,10 @@ class MusicTests(unittest.TestCase):
         self.assertIn("/api/artwork/", page)
         self.assertIn("track.artwork_url", page)
         self.assertIn('id="cover"', page)
-        self.assertIn("artwork:[{src:cover}]", page)
+        self.assertIn("reader.readAsDataURL(blob)", page)
+        self.assertIn("image.sizes='any'", page)
+        self.assertIn("updateMetadata(currentTrack,true)", page)
+        self.assertIn("audio.addEventListener('loadedmetadata'", page)
         self.assertIn("mediaSession.setActionHandler", page)
         self.assertIn("manifest.webmanifest", page)
         self.assertIn("audio.addEventListener('ended'", page)
@@ -443,6 +446,8 @@ class MusicTests(unittest.TestCase):
             self.assertEqual(signed_response.getheader("Content-Type"), "image/jpeg")
             self.assertEqual(signed_response.getheader("Cache-Control"),
                              "private, max-age=3600, immutable")
+            self.assertIn("img-src 'self' data:",
+                          signed_response.getheader("Content-Security-Policy"))
             self.assertEqual(signed_payload, self.cover)
 
             tampered = signed_url[:-1] + ("0" if signed_url[-1] != "0" else "1")
