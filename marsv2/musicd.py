@@ -1,4 +1,3 @@
-/bin/bash: warning: setlocale: LC_ALL: cannot change locale (C.UTF-8): No such file or directory
 """Authenticated MarsAmp catalog, playback control, and browser audio sink.
 
 The SSH terminal remains the control surface.  Browsers receive only opaque
