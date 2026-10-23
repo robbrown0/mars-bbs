@@ -1,3 +1,4 @@
+/bin/bash: warning: setlocale: LC_ALL: cannot change locale (C.UTF-8): No such file or directory
 from __future__ import annotations
 
 import http.client
@@ -308,6 +309,10 @@ class MusicTests(unittest.TestCase):
         self.assertIn('id="output"', page)
         self.assertIn('class="cast-glyph"', page)
         self.assertIn('id="output-label"', page)
+        self.assertIn('class="utility"', page)
+        self.assertIn('>OUTPUT</span>', page)
+        self.assertNotIn('class="output-copy"', page)
+        self.assertNotIn('PLAY ON ANOTHER SPEAKER', page)
         self.assertIn('● SECURE</div>', page)
         self.assertNotIn('SECURE AUDIO LINK', page)
         self.assertIn('x-webkit-airplay="allow"', page)
