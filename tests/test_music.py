@@ -109,9 +109,17 @@ class MusicTests(unittest.TestCase):
     def test_track_numbers_are_hidden_only_in_presented_titles(self) -> None:
         self.assertEqual(_display_title("06 Hot For Teacher"), "Hot For Teacher")
         self.assertEqual(_display_title("1-06 - Panama"), "Panama")
-        self.assertEqual(_display_title("16_dressed_up"), "dressed_up")
+        self.assertEqual(_display_title("16_dressed_up"), "dressed up")
         self.assertEqual(_display_title("1999"), "1999")
-        self.assertEqual(_display_title("867-5309_Jenny"), "867-5309_Jenny")
+        self.assertEqual(_display_title("867-5309_Jenny"), "867-5309 Jenny")
+        self.assertEqual(
+            _display_title("Metallica - Master of Puppets - (02) - Master Of Puppets"),
+            "Master Of Puppets",
+        )
+        self.assertEqual(
+            _display_title("(disc_2)_05_-_Always_On_My_Mind"),
+            "Always On My Mind",
+        )
         with self.music.db:
             self.music.db.execute(
                 "UPDATE tracks SET title=? WHERE title=?",
@@ -123,6 +131,15 @@ class MusicTests(unittest.TestCase):
             "SELECT title FROM tracks WHERE id=?", (presented["id"],)
         ).fetchone()[0]
         self.assertEqual(stored, "06 Track One")
+
+    def test_playlist_match_uses_the_song_part_of_verbose_filenames(self) -> None:
+        wanted = {"artists": ["Metallica"], "title": "Master of Puppets", "album": ""}
+        battery = {"artist": "Metallica", "album": "Master of Puppets",
+                   "title": "Metallica - Master of Puppets - (01) - Battery"}
+        title_track = {"artist": "Metallica", "album": "Master of Puppets",
+                       "title": "Metallica - Master of Puppets - (02) - Master Of Puppets"}
+        self.assertEqual(Music._playlist_match(battery, wanted), -1)
+        self.assertEqual(Music._playlist_match(title_track, wanted), 100)
 
     def test_pair_ticket_is_single_use_and_session_bound(self) -> None:
         with patch("marsv2.musicd.validate", return_value=IDENTITY):

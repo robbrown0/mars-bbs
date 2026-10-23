@@ -157,11 +157,20 @@ def _music_key(value: str) -> str:
 def _display_title(value: str) -> str:
     """Hide filename track/disc prefixes without changing catalog identity."""
     original = _safe_component(value).strip()
+    cleaned = original.replace("_", " ")
+    verbose = re.fullmatch(
+        r".+?\s+-\s+.+?\s+-\s+\(?\d{1,3}\)?\s+-\s+(.+)", cleaned,
+    )
+    if verbose:
+        cleaned = verbose.group(1)
+    cleaned = re.sub(r"^\s*\(disc\s+\d+\)\s*", "", cleaned,
+                     count=1, flags=re.IGNORECASE)
     cleaned = re.sub(
         r"^\s*(?:(?:\d{1,2}-\d{1,2})(?:\s*[-_.]\s*|\s+)"
         r"|\d{1,3}(?:\s+|\s*[._]\s*|\s+-\s*|\s*-\s+))(?=\S)",
-        "", original, count=1,
-    ).strip()
+        "", cleaned, count=1,
+    ).lstrip(" -.")
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
     return cleaned or original or "Untitled"
 
 
@@ -284,7 +293,8 @@ class Music:
         artist_key = _music_key(str(track["artist"]))
         if artist_key not in {_music_key(str(value)) for value in wanted["artists"]}:
             return -1
-        title_key = _music_key(str(track["title"]))
+        presented_title = _display_title(str(track["title"]))
+        title_key = _music_key(presented_title)
         wanted_title = _music_key(str(wanted["title"]))
         if title_key == wanted_title:
             score = 100
@@ -301,7 +311,7 @@ class Music:
                 score += 15
             else:
                 score -= 10
-        lowered = str(track["title"]).casefold()
+        lowered = presented_title.casefold()
         if any(word in lowered for word in ("live", "demo", "tribute", "workout", "cover")):
             score -= 20
         return score
