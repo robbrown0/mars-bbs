@@ -702,7 +702,8 @@
         "music"
       ],
       "environment": {
-        "MARS_V2_HEALTH_SERVICE": "music"
+        "MARS_V2_HEALTH_SERVICE": "music",
+        "MARSAMP_ARTWORK_USER_AGENT": "${MARSAMP_ARTWORK_USER_AGENT:-MarsHotelBBS/1.0 (https://github.com/robbrown0/mars-bbs)}"
       },
       "healthcheck": {
         "test": [

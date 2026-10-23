@@ -45,6 +45,7 @@ Read `secrets/admin_password` locally and log in as `admin`. Protect or rotate t
 | `MARSAMP_EXTRA_ROOT` | `/srv/music/extra` | Approved root containing optional additional read-only libraries |
 | `MARSAMP_PUBLIC_URL` | example HTTPS URL | Public browser pairing and playback path |
 | `MARSAMP_PORT` | `2444` | Loopback-only MarsAmp HTTP listener |
+| `MARSAMP_ARTWORK_USER_AGENT` | Mars Hotel project URL | Meaningful application/contact identity for administrator-triggered MusicBrainz searches |
 | `MARS_INFORMATION_USER_AGENT` | generic Mars identifier | Collector HTTP User-Agent; add an operator contact if desired |
 | `PUBLIC_IRC_*` | Mars IRC defaults | Destination shown in IRC Center |
 | `MARS_DOOR_IMAGE` | local reconstructed door image | Optional preloaded compatible door image |

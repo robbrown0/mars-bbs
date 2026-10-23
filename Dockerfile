@@ -15,7 +15,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends python3 python3
 COPY --from=stockfish /out/bin/stockfish /usr/local/bin/stockfish
 COPY --from=stockfish /out/doc/ /usr/share/doc/stockfish/
 COPY --from=stockfish /out/source/ /usr/src/stockfish/
-RUN python3 -m venv --system-site-packages /opt/venv && /opt/venv/bin/pip install --no-cache-dir chess==1.11.2
+RUN python3 -m venv --system-site-packages /opt/venv && /opt/venv/bin/pip install --no-cache-dir chess==1.11.2 tinytag==2.3.2
 ENV PATH=/opt/venv/bin:$PATH
 ENV PYTHONPATH=/opt/mars-v2 PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 MARS_STOCKFISH=/usr/local/bin/stockfish
 WORKDIR /opt/mars-v2
