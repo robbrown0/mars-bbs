@@ -46,6 +46,8 @@ DYNAMIC_ALL = "all"
 ARTWORK_CACHE_BYTES = 32 * 1024 * 1024
 ARTWORK_TICKET_WINDOW = 60 * 60
 ARTWORK_TICKET_LIFETIME = 9 * ARTWORK_TICKET_WINDOW
+STREAM_TICKET_WINDOW = 15 * 60
+STREAM_TICKET_LIFETIME = 9 * STREAM_TICKET_WINDOW
 DEFAULT_ARTWORK_USER_AGENT = (
     "MarsHotelBBS/1.0 (https://github.com/robbrown0/mars-bbs)"
 )
@@ -313,6 +315,7 @@ class Music:
         ] = OrderedDict()
         self.artwork_cache_bytes = 0
         self.artwork_signing_key = secrets.token_bytes(32)
+        self.stream_signing_key = secrets.token_bytes(32)
         self.artwork_search_at = 0.0
         self.playlist_definitions = self._load_playlists(playlists_file)
         self.dynamic_playlists = {
@@ -1094,6 +1097,47 @@ class Music:
             self.artwork_signing_key, message, hashlib.sha256).hexdigest()
         return hmac.compare_digest(signature, expected)
 
+    def stream_version(self, track_id: int) -> str:
+        """Return an opaque change token for one immutable catalog file."""
+        with self.lock:
+            row = self.db.execute(
+                "SELECT size,modified_ns FROM tracks WHERE id=? AND available=1",
+                (track_id,),
+            ).fetchone()
+        if row is None:
+            raise RPCError("track unavailable")
+        seed = f"{track_id}:{int(row['size'])}:{int(row['modified_ns'])}".encode("ascii")
+        return hashlib.sha256(seed).hexdigest()[:16]
+
+    def stream_capability(self, track_id: int) -> str:
+        """Issue a short-lived URL usable by a detached AirPlay/Cast receiver."""
+        version = self.stream_version(track_id)
+        now = int(time.time())
+        expires = ((now // STREAM_TICKET_WINDOW) + 8) * STREAM_TICKET_WINDOW
+        message = f"{track_id}:{version}:{expires}".encode("ascii")
+        signature = hmac.new(
+            self.stream_signing_key, message, hashlib.sha256).hexdigest()
+        return (f"{self.base_path}/stream/{track_id}/{version}/"
+                f"{expires}/{signature}")
+
+    def validate_stream_capability(self, track_id: int, version: str,
+                                   expires: int, signature: str) -> bool:
+        """Validate a receiver capability scoped to one unchanged track."""
+        now = int(time.time())
+        if (not re.fullmatch(r"[0-9a-f]{16}", version)
+                or not re.fullmatch(r"[0-9a-f]{64}", signature)
+                or expires < now or expires > now + STREAM_TICKET_LIFETIME):
+            return False
+        try:
+            if not hmac.compare_digest(version, self.stream_version(track_id)):
+                return False
+        except RPCError:
+            return False
+        message = f"{track_id}:{version}:{expires}".encode("ascii")
+        expected = hmac.new(
+            self.stream_signing_key, message, hashlib.sha256).hexdigest()
+        return hmac.compare_digest(signature, expected)
+
     def admin_artwork_search(self, track_id: int, artist: str,
                              album: str) -> dict[str, object]:
         track = self._public_track(track_id)
@@ -1247,6 +1291,7 @@ class Music:
                 state["track"]["artwork_url"] = self.artwork_capability(
                     track_id, str(state["track"]["artwork_version"]))
                 state["stream"] = f"{self.base_path}/audio/{track_id}"
+                state["output_stream"] = self.stream_capability(track_id)
             except RPCError:
                 state.update({"action": "stop", "track_id": 0})
         state["compact_player_lines"] = self.player_layout()
@@ -1717,10 +1762,11 @@ header{display:flex;align-items:center;justify-content:space-between;padding:18p
 .now{min-width:0;display:flex;flex-direction:column;justify-content:center}.eyebrow{color:var(--green);letter-spacing:.14em;font-size:.72rem;margin-bottom:10px}.title{font:800 clamp(1.35rem,4vw,2.2rem)/1.12 system-ui,sans-serif;overflow-wrap:anywhere}.artist{margin-top:9px;color:#cbd4e9;font:600 1rem system-ui,sans-serif}.album{margin-top:5px;color:var(--muted);font:.88rem system-ui,sans-serif}
 .timeline{padding:0 24px 6px}.time-row{display:flex;align-items:center;gap:12px;color:var(--muted);font-size:.75rem}.time-row output{width:46px}.time-row output:last-child{text-align:right}input[type=range]{width:100%;accent-color:var(--green)}
 .meter{height:36px;display:flex;gap:4px;align-items:end;margin:10px 0}.meter i{flex:1;max-width:18px;background:linear-gradient(var(--green),var(--blue));height:12%;border-radius:3px 3px 0 0;transition:height .2s}
-.controls{display:grid;grid-template-columns:repeat(5,1fr);gap:9px;padding:14px 24px 20px}button{appearance:none;border:1px solid #465b8d;border-radius:13px;background:#171f39;color:var(--white);font:700 .82rem ui-monospace,monospace;padding:13px 8px;min-height:48px;box-shadow:0 5px 14px #0005;touch-action:manipulation}button:active{transform:translateY(1px);background:#223052}button.primary{color:#07120e;background:linear-gradient(135deg,#55f0ad,#2dcf82);border-color:#8dffd0;font-size:1rem}button.danger{color:#ffc7c7}button.attention{animation:pulse 1.2s steps(2,end) infinite}
+.controls{display:grid;grid-template-columns:repeat(5,1fr);gap:9px;padding:14px 24px 20px}button{appearance:none;border:1px solid #465b8d;border-radius:13px;background:#171f39;color:var(--white);font:700 .82rem ui-monospace,monospace;padding:13px 8px;min-height:48px;box-shadow:0 5px 14px #0005;touch-action:manipulation}button:active{transform:translateY(1px);background:#223052}button.primary{color:#07120e;background:linear-gradient(135deg,#55f0ad,#2dcf82);border-color:#8dffd0;font-size:1rem}button.danger{color:#ffc7c7}button.attention{animation:pulse 1.2s steps(2,end) infinite}button.connected{color:#07120e;background:linear-gradient(135deg,#55f0ad,#47a9ff);border-color:#b7ffe2}
 @keyframes pulse{50%{box-shadow:0 0 24px #ffc65a;background:var(--amber)}}.status{margin:0 24px 16px;padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:#0b0f20;color:var(--amber);min-height:44px;line-height:1.35}.mode{color:var(--blue);font-size:.76rem;letter-spacing:.08em;padding:0 24px 14px}
+.output{display:grid;grid-template-columns:minmax(150px,220px) 1fr;gap:12px;align-items:center;margin:0 24px 16px;padding:12px;border:1px solid var(--line);border-radius:14px;background:#0b0f20}.output-copy{color:var(--muted);font:.78rem/1.4 system-ui,sans-serif}.output-copy strong{display:block;color:var(--green);font-size:.88rem}.output button{width:100%}
 details{border-top:1px solid var(--line);background:#0b0f1d}summary{cursor:pointer;list-style:none;padding:17px 22px;color:var(--green);font-weight:800;letter-spacing:.08em}summary::-webkit-details-marker{display:none}summary::after{content:'+';float:right;color:var(--blue);font-size:1.25rem}details[open] summary::after{content:'–'}.queue-meta{padding:0 22px 12px;color:var(--muted);font-size:.8rem}.queue{list-style:none;margin:0;padding:0 14px 18px;max-height:40vh;overflow:auto;overscroll-behavior:contain}.queue li{padding:11px 10px;border-top:1px solid #202945;display:grid;grid-template-columns:32px 1fr;gap:10px}.queue .number{color:var(--blue);text-align:right}.queue strong{display:block;color:var(--white);font:650 .9rem system-ui,sans-serif}.queue span{color:var(--muted);font: .78rem system-ui,sans-serif}.queue .current strong{color:var(--green)}footer{padding:14px 22px;color:#7f8ba8;font-size:.72rem;line-height:1.5;border-top:1px solid var(--line)}
-@media(max-width:560px){body{padding-left:8px;padding-right:8px}.stage{grid-template-columns:112px 1fr;gap:16px;padding:18px}.controls{padding-left:14px;padding-right:14px;gap:6px}.controls button{font-size:.72rem;padding:10px 4px}.timeline{padding-left:16px;padding-right:16px}.status,.mode{margin-left:16px;margin-right:16px}.mode{padding-left:0}.brand{font-size:1rem}}
+@media(max-width:560px){body{padding-left:8px;padding-right:8px}.stage{grid-template-columns:112px 1fr;gap:16px;padding:18px}.controls{padding-left:14px;padding-right:14px;gap:6px}.controls button{font-size:.72rem;padding:10px 4px}.timeline{padding-left:16px;padding-right:16px}.status,.mode{margin-left:16px;margin-right:16px}.mode{padding-left:0}.brand{font-size:1rem}.output{grid-template-columns:1fr;margin-left:16px;margin-right:16px}.output-copy{text-align:center}}
 @media(max-width:390px){.stage{grid-template-columns:88px 1fr}.controls{grid-template-columns:repeat(3,1fr)}.controls .primary{grid-column:auto}.title{font-size:1.18rem}}
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style></head><body><main>
@@ -1736,11 +1782,15 @@ details{border-top:1px solid var(--line);background:#0b0f1d}summary{cursor:point
 <button id="enable" class="primary" type="button" aria-label="Play">▶ PLAY</button>
 <button id="stop" class="danger" type="button" aria-label="Stop">■ STOP</button>
 <button id="next" type="button" aria-label="Next track">NEXT ▶</button></section>
+<section class="output" aria-label="Speaker output">
+<button id="output" type="button" aria-label="Choose AirPlay or Cast speaker">◉ AIRPLAY / CAST</button>
+<div class="output-copy"><strong id="output-state">PLAY ON ANOTHER SPEAKER</strong><span id="output-help">Choose AirPlay, Chromecast, TV, or an AirPlay-compatible Sonos speaker.</span></div>
+</section>
 <div id="hint" class="status" role="status">Attempting to start audio automatically.</div>
 <div id="mode" class="mode">PLAY MODE: SEQUENTIAL</div>
 <details id="queue-panel"><summary id="queue-summary">QUEUE · loading</summary><div id="queue-meta" class="queue-meta"></div><ol id="queue" class="queue"></ol></details>
 <footer>Keep this page open while controlling MarsAmp through SSH. Lock-screen controls use this authenticated browser session. No NAS path, BBS password, or internal service address is stored here.</footer>
-<audio id="audio" preload="metadata" autoplay playsinline></audio>
+<audio id="audio" preload="metadata" autoplay playsinline x-webkit-airplay="allow"></audio>
 </main><script>
 const BASE=__BASE__;const ART192=new URL(BASE+'/artwork-192.png',location.origin).href;const ART512=new URL(BASE+'/artwork-512.png',location.origin).href;
 const audio=document.getElementById('audio'),meter=document.getElementById('meter');
@@ -1750,8 +1800,9 @@ const artistEl=document.getElementById('artist'),albumEl=document.getElementById
 const seek=document.getElementById('seek'),elapsed=document.getElementById('elapsed');
 const durationEl=document.getElementById('duration'),queueEl=document.getElementById('queue');
 const queueSummary=document.getElementById('queue-summary'),queueMeta=document.getElementById('queue-meta');
+const output=document.getElementById('output'),outputState=document.getElementById('output-state'),outputHelp=document.getElementById('output-help');
 const coverEl=document.getElementById('cover');coverEl.onerror=()=>{if(coverEl.src!==ART512)coverEl.src=ART512};
-let enabled=false,serial=-1,currentTrack=null,serverAction='stop',metadataKey='',mediaArtworkData='',mediaArtworkType='';
+let enabled=false,serial=-1,currentTrack=null,serverAction='stop',metadataKey='',mediaArtworkData='',mediaArtworkType='',localStream='',outputStream='',switchingOutput=false;
 for(let i=0;i<18;i++)meter.appendChild(document.createElement('i'));
 const text=value=>String(value||'').replace(/[<>]/g,'');
 function clock(value){if(!Number.isFinite(value))return '0:00';let seconds=Math.max(0,Math.floor(value));return Math.floor(seconds/60)+':'+String(seconds%60).padStart(2,'0')}
@@ -1759,8 +1810,14 @@ function bars(on){[...meter.children].forEach((bar,i)=>bar.style.height=on?(18+(
 function needsTap(){enabled=false;enable.classList.add('attention');hint.textContent='Your browser blocked automatic audio. Tap PLAY once.'}
 function audioReady(){enabled=true;enable.classList.remove('attention');hint.textContent='Audio enabled. MarsAmp will continue through the current queue.'}
 async function beginPlayback(){if(!audio.src){hint.textContent='Choose a song in the BBS or queue first.';return}try{await audio.play();audioReady()}catch(error){needsTap()}}
-function sessionEnded(){audio.pause();audio.removeAttribute('src');audio.load();metadataKey='';mediaArtworkData='';mediaArtworkType='';titleEl.textContent='Session ended';artistEl.textContent='Pair MarsAmp again from the BBS';albumEl.textContent='';hint.textContent='Playback authorization ended.';bars(false);setMediaState('none')}
+function sessionEnded(){audio.pause();audio.removeAttribute('src');audio.load();metadataKey='';mediaArtworkData='';mediaArtworkType='';localStream='';outputStream='';titleEl.textContent='Session ended';artistEl.textContent='Pair MarsAmp again from the BBS';albumEl.textContent='';hint.textContent='Playback authorization ended.';bars(false);setMediaState('none')}
 function setMediaState(value){if('mediaSession' in navigator){try{navigator.mediaSession.playbackState=value}catch(error){}}}
+function remoteConnected(){return Boolean(audio.webkitCurrentPlaybackTargetIsWireless||(audio.remote&&audio.remote.state!=='disconnected'))}
+function absolute(source){return source?new URL(source,location.origin).href:''}
+function sameSource(source){return Boolean(source)&&audio.src===absolute(source)}
+function replaceSource(source,position,wasPlaying){if(!source||sameSource(source))return;switchingOutput=true;audio.src=source;const restore=()=>{if(Number.isFinite(position)&&position>0&&Number.isFinite(audio.duration))audio.currentTime=Math.min(position,Math.max(0,audio.duration-.25));if(wasPlaying)beginPlayback();switchingOutput=false};audio.addEventListener('loadedmetadata',restore,{once:true});audio.load()}
+function showOutputState(){const connected=remoteConnected();output.classList.toggle('connected',connected);output.textContent=connected?'◉ SPEAKER CONNECTED':'◉ AIRPLAY / CAST';outputState.textContent=connected?'REMOTE OUTPUT ACTIVE':'PLAY ON ANOTHER SPEAKER';outputHelp.textContent=connected?'MarsAmp controls and the queue remain active on this page.':'Choose AirPlay, Chromecast, TV, or an AirPlay-compatible Sonos speaker.'}
+function selectOutput(){if(!currentTrack||!outputStream){hint.textContent='Choose a song before selecting a speaker.';return}const position=audio.currentTime,wasPlaying=!audio.paused;replaceSource(outputStream,position,wasPlaying);try{if(typeof audio.webkitShowPlaybackTargetPicker==='function'){audio.webkitShowPlaybackTargetPicker();hint.textContent='Choose an AirPlay speaker. Sonos appears here when it supports AirPlay.';return}if(audio.remote&&typeof audio.remote.prompt==='function'){audio.remote.prompt().then(showOutputState).catch(error=>{showOutputState();if(error&&error.name!=='NotAllowedError')hint.textContent='No compatible Cast or remote speaker was found.'});hint.textContent='Choose a Cast or remote playback device.';return}}catch(error){}hint.textContent='This browser has no webpage speaker picker. Use its system AirPlay or Cast menu.'}
 function publishMetadata(track,artwork=ART512,type='image/png'){if(!track||!('mediaSession' in navigator)||!window.MediaMetadata)return;const image={src:artwork};if(type)image.type=type;if(artwork.startsWith('data:'))image.sizes='any';const artist=text(track.artist)||'The Mars Hotel',album=text(track.album)||'MarsAmp',byline=album&&album!==artist?artist+' · '+album:artist;try{navigator.mediaSession.metadata=new MediaMetadata({title:text(track.title)||'Untitled',artist:byline,album:album,artwork:[image]})}catch(error){}}
 function asDataURL(blob){return new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result||''));reader.onerror=()=>reject(reader.error);reader.readAsDataURL(blob)})}
 function refreshMetadata(){if(currentTrack)publishMetadata(currentTrack,mediaArtworkData||ART512,mediaArtworkType||'image/png')}
@@ -1773,15 +1830,19 @@ function queueRow(track,index,current=false){const item=document.createElement('
 async function loadQueue(){try{const response=await fetch(BASE+'/api/queue',{cache:'no-store'});if(response.status===401){sessionEnded();return}if(!response.ok)throw new Error('queue unavailable');const data=await response.json();queueEl.replaceChildren();queueSummary.textContent=(data.label||'QUEUE')+' · '+Number(data.total||0).toLocaleString()+' tracks';
 if(data.dynamic){queueMeta.textContent='Full-library shuffle selects each next track directly from the live catalog.';if(data.current)queueEl.append(queueRow(data.current,0,true));const waiting=document.createElement('li');waiting.textContent='∞ Next selection is drawn when playback advances.';queueEl.append(waiting)}else{queueMeta.textContent=(data.mode||'sequential').toUpperCase()+' · upcoming playback order';if(data.current)queueEl.append(queueRow(data.current,0,true));(data.up_next||[]).forEach((track,index)=>queueEl.append(queueRow(track,index+1)))}
 }catch(error){queueSummary.textContent='QUEUE · temporarily unavailable'}}
-async function applyState(state){serverAction=state.action||'stop';const track=state.track;if(track){titleEl.textContent=text(track.title)||'Untitled';artistEl.textContent=text(track.artist)||'Unknown artist';albumEl.textContent=text(track.album)||'The Mars Hotel collection';updateMetadata(track)}else if(serverAction==='stop'){titleEl.textContent='Playback stopped';artistEl.textContent='Choose a song in the BBS';albumEl.textContent='MarsAmp is ready'}mode.textContent='PLAY MODE: '+String(state.mode||'sequential').toUpperCase();
-if(state.serial!==serial){serial=state.serial;if(state.action==='play'&&state.stream){if(!state.resume||!audio.src)audio.src=state.stream;await beginPlayback()}else if(state.action==='pause')audio.pause();else if(state.action==='stop'){audio.pause();audio.removeAttribute('src');audio.load()}await loadQueue()}bars(!audio.paused)}
+async function applyState(state){serverAction=state.action||'stop';localStream=state.stream||'';outputStream=state.output_stream||'';const track=state.track;if(track){titleEl.textContent=text(track.title)||'Untitled';artistEl.textContent=text(track.artist)||'Unknown artist';albumEl.textContent=text(track.album)||'The Mars Hotel collection';updateMetadata(track)}else if(serverAction==='stop'){titleEl.textContent='Playback stopped';artistEl.textContent='Choose a song in the BBS';albumEl.textContent='MarsAmp is ready'}mode.textContent='PLAY MODE: '+String(state.mode||'sequential').toUpperCase();
+if(state.serial!==serial){serial=state.serial;if(state.action==='play'&&state.stream){const source=remoteConnected()&&outputStream?outputStream:localStream;if(!state.resume||!audio.src||!sameSource(source))audio.src=source;await beginPlayback()}else if(state.action==='pause')audio.pause();else if(state.action==='stop'){audio.pause();audio.removeAttribute('src');audio.load()}await loadQueue()}bars(!audio.paused);showOutputState()}
 async function navigate(path,label){hint.textContent=label;try{const response=await fetch(BASE+path,{method:'POST',credentials:'same-origin'});if(response.status===401){sessionEnded();return}if(!response.ok)throw new Error('request failed');await applyState(await response.json())}catch(error){hint.textContent='Unable to change songs. Check the connection.'}}
 async function poll(){try{const response=await fetch(BASE+'/api/state',{cache:'no-store'});if(response.status===401){sessionEnded();return}await applyState(await response.json());setTimeout(poll,750)}catch(error){setTimeout(poll,2000)}}
 enable.onclick=()=>serverAction==='pause'?navigate('/api/resume','Resuming playback…'):beginPlayback();document.getElementById('pause').onclick=()=>navigate('/api/pause','Pausing playback…');document.getElementById('stop').onclick=()=>navigate('/api/stop','Stopping playback…');
 document.getElementById('previous').onclick=()=>navigate('/api/previous','Loading the previous song…');document.getElementById('next').onclick=()=>navigate('/api/advance','Loading the next song…');
+output.onclick=selectOutput;
 seek.addEventListener('input',()=>{if(Number.isFinite(audio.duration))audio.currentTime=audio.duration*Number(seek.value)/1000});
 audio.addEventListener('timeupdate',updatePosition);audio.addEventListener('durationchange',updatePosition);audio.addEventListener('loadedmetadata',refreshMetadata);audio.addEventListener('canplay',refreshMetadata);audio.addEventListener('playing',refreshMetadata);audio.addEventListener('play',()=>{refreshMetadata();enable.textContent='▶ PLAYING';bars(true);setMediaState('playing')});audio.addEventListener('pause',()=>{enable.textContent='▶ PLAY';bars(false);setMediaState('paused')});
 audio.addEventListener('ended',()=>navigate('/api/advance','Loading the next song…'));document.getElementById('queue-panel').addEventListener('toggle',event=>{if(event.target.open)loadQueue()});
+audio.addEventListener('webkitplaybacktargetavailabilitychanged',event=>{output.disabled=event.availability==='not-available'&&!audio.remote;outputHelp.textContent=event.availability==='available'?'AirPlay devices are available. Tap to choose one.':'Choose AirPlay, Chromecast, TV, or an AirPlay-compatible Sonos speaker.'});
+audio.addEventListener('webkitcurrentplaybacktargetiswirelesschanged',()=>{showOutputState();if(!remoteConnected()&&!switchingOutput&&localStream)replaceSource(localStream,audio.currentTime,!audio.paused)});
+if(audio.remote&&typeof audio.remote.watchAvailability==='function'){audio.remote.onconnecting=showOutputState;audio.remote.onconnect=showOutputState;audio.remote.ondisconnect=()=>{showOutputState();if(!switchingOutput&&localStream)replaceSource(localStream,audio.currentTime,!audio.paused)};audio.remote.watchAvailability(available=>{output.disabled=!available;outputHelp.textContent=available?'Compatible remote speakers are available. Tap to choose one.':'No compatible remote speaker is currently visible.'}).catch(()=>{output.disabled=false})}
 if('mediaSession' in navigator){const action=(name,handler)=>{try{navigator.mediaSession.setActionHandler(name,handler)}catch(error){}};action('play',()=>serverAction==='pause'?navigate('/api/resume','Resuming playback…'):beginPlayback());action('pause',()=>navigate('/api/pause','Pausing playback…'));action('stop',()=>navigate('/api/stop','Stopping playback…'));action('previoustrack',()=>navigate('/api/previous','Loading the previous song…'));action('nexttrack',()=>navigate('/api/advance','Loading the next song…'));action('seekbackward',details=>{audio.currentTime=Math.max(0,audio.currentTime-(details.seekOffset||10))});action('seekforward',details=>{audio.currentTime=Math.min(audio.duration||audio.currentTime,audio.currentTime+(details.seekOffset||10))});action('seekto',details=>{if(details.seekTime!=null)audio.currentTime=details.seekTime})}
 poll();
 </script></body></html>"""
@@ -1870,6 +1931,19 @@ class MusicHTTP(BaseHTTPRequestHandler):
             self._track_artwork(
                 track_id, head=False, cache_control="private, max-age=3600, immutable")
             return
+        signed_stream = re.fullmatch(
+            r"/stream/([1-9][0-9]{0,9})/([0-9a-f]{16})/"
+            r"([0-9]{9,12})/([0-9a-f]{64})", path)
+        if signed_stream:
+            track_id = integer(int(signed_stream.group(1)), "track id")
+            if not self.music.validate_stream_capability(
+                    track_id, signed_stream.group(2), int(signed_stream.group(3)),
+                    signed_stream.group(4)):
+                self._headers(403, "text/plain; charset=utf-8")
+                return
+            self._stream(track_id, head=False,
+                         cache_control="private, max-age=900")
+            return
         if path == "/manifest.webmanifest":
             payload = _player_manifest(self.music.base_path)
             self._headers(200, "application/manifest+json", len(payload))
@@ -1933,6 +2007,19 @@ class MusicHTTP(BaseHTTPRequestHandler):
             self._track_artwork(
                 track_id, head=True, cache_control="private, max-age=3600, immutable")
             return
+        signed_stream = re.fullmatch(
+            r"/stream/([1-9][0-9]{0,9})/([0-9a-f]{16})/"
+            r"([0-9]{9,12})/([0-9a-f]{64})", path or "")
+        if signed_stream:
+            track_id = integer(int(signed_stream.group(1)), "track id")
+            if not self.music.validate_stream_capability(
+                    track_id, signed_stream.group(2), int(signed_stream.group(3)),
+                    signed_stream.group(4)):
+                self._headers(403, "text/plain; charset=utf-8")
+                return
+            self._stream(track_id, head=True,
+                         cache_control="private, max-age=900")
+            return
         try:
             self._identity()
             artwork = re.fullmatch(r"/api/artwork/([1-9][0-9]{0,9})", path or "")
@@ -1981,7 +2068,8 @@ class MusicHTTP(BaseHTTPRequestHandler):
         if not head:
             self.wfile.write(payload)
 
-    def _stream(self, track_id: int, head: bool) -> None:
+    def _stream(self, track_id: int, head: bool,
+                cache_control: str = "no-store") -> None:
         row, filename = self.music._track_file(track_id)
         total = int(row["size"])
         start, end, status = 0, total - 1, 200
@@ -2006,7 +2094,8 @@ class MusicHTTP(BaseHTTPRequestHandler):
         extra = {"Accept-Ranges": "bytes"}
         if status == 206:
             extra["Content-Range"] = f"bytes {start}-{end}/{total}"
-        self._headers(status, str(row["mime_type"]), length, extra)
+        self._headers(status, str(row["mime_type"]), length, extra,
+                      cache_control=cache_control)
         if head:
             return
         with open(filename, "rb") as stream:

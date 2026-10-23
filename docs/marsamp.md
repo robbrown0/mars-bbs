@@ -36,6 +36,27 @@ When a listener selects a song without an actively polling browser sink, MarsAmp
 
 The player publishes current title, artist, album, position, per-track album artwork, and play/pause/previous/next/seek actions through the browser Media Session API. Compatible phones and desktop systems can therefore present MarsAmp like a dedicated audio service on the lock screen, notification area, headset controls, or system media panel. Because iOS normally shows only a title and one secondary line, MarsAmp publishes that line as `Artist · Album` while retaining the separate album field for clients that render it. Long values are truncated by the operating system. Filename-derived track and disc numbers are removed from presented titles without renaming the audio file or changing its stored catalog identity. The operating system ultimately decides which controls and artwork it displays. The page also includes installable web-app metadata and appropriately sized local PNG fallback artwork; these public branding assets contain no account or catalog information.
 
+The browser player also has an **AIRPLAY / CAST** output button. Safari uses
+Apple's native AirPlay route picker; compatible Chrome-family browsers use the
+[W3C Remote Playback API](https://www.w3.org/TR/remote-playback/) to show the
+browser's Cast or remote-device picker. The operating system and browser decide
+which devices appear. AirPlay-capable Sonos products can be selected from an
+iPhone, iPad, or Mac just like any other AirPlay speaker; see
+[Sonos's supported-product list](https://support.sonos.com/en/article/stream-airplay-audio-to-sonos).
+The selected speaker keeps the same MarsAmp queue, automatic next-track
+advance, shuffle, Back/Next buttons, and page controls. The page must remain
+open because it is still the queue controller.
+
+Remote speakers do not receive the HTTP-only MarsAmp browser cookie. Instead,
+an authenticated state request issues a short-lived HMAC capability for the
+current, unchanged track. It exposes neither a NAS path nor account or server
+credentials, cannot select another track, expires in about two hours, and is
+replaced on every track change. Tampered, expired, cross-track, and stale-file
+capabilities are rejected. Direct registration as a Sonos content service is
+not included: Sonos requires a separate partner integration, service
+authentication, catalog/playback APIs, validation, and release review. AirPlay
+is the supported MarsAmp-to-Sonos path in this release.
+
 Album art is resolved in this order: an administrator-confirmed cached cover, artwork embedded in the audio file, a conventional `cover`, `folder`, `front`, or `album` JPEG/PNG/WebP beside the read-only album, then the MarsAmp fallback. Audio files and sidecars are never modified. Track-specific art is issued only after an authenticated browser state request. The returned URL carries a signed, expiring capability restricted to one track image; it cannot authorize audio, account data, BBS access, or another image. For iOS lock-screen reliability, the authenticated page fetches those image bytes itself, supplies WebKit a self-contained image data URL, and republishes metadata after the audio element starts. This avoids depending on a detached media process to repeat the network request or retain a page cookie. NAS paths and provider URLs are not exposed. A bounded memory cache avoids repeated NAS reads.
 
 Under **Administration → MarsAmp → Cover artwork**, a Sysop can find a library track, inspect its current artwork source, and search MusicBrainz for a corrected artist/album match. The BBS presents canonical release-group candidates and requires an explicit `IMPORT` confirmation before retrieving the 1200px front cover from the Cover Art Archive. Confirmed images are stored in the private music database and apply to tracks with that artist/album identity. The service rate-limits MusicBrainz searches, accepts only fixed HTTPS provider hosts and safe image formats, and never lets listeners or administrators supply an arbitrary fetch URL. Set `MARSAMP_ARTWORK_USER_AGENT` to a meaningful application/contact URL when publishing another installation.
@@ -61,7 +82,7 @@ The twentieth playlist, **Shuffle Everything**, is dynamic. It draws from every 
 
 The curated selections were evaluated against the [Rolling Stone 500 Greatest Songs](https://au.rollingstone.com/music/music-lists/best-songs-of-all-time-30065/), [Rolling Stone's 200 Best Songs of the 1980s](https://au.rollingstone.com/music/music-lists/200-best-songs-1980s-52935/), the [Library of Congress National Recording Registry](https://www.loc.gov/programs/national-recording-preservation-board/recording-registry/complete-national-recording-registry-listing/), and the recordings actually available on the configured libraries. They are editorial playlists rather than claims of a new numeric rating. The service resolves portable artist/title definitions against the current catalog after every scan. Missing recordings are omitted; it never substitutes a similarly named song or represents an unavailable selection as playable.
 
-The browser streams the original file and does not transcode it. MP3 and M4A make up most of the primary library and have broad browser support. FLAC works in current major browsers. WMA is cataloged but may not play in a browser. Tags are not parsed in this recovered implementation; artist, album, and title are inferred from directory and file names. There is no gapless playback or visual audio analyzer.
+The browser streams the original file and does not transcode it. MP3 and M4A make up most of the primary library and have broad browser support. FLAC works in current major browsers and AirPlay targets; individual Cast receivers may support a smaller codec set. WMA is cataloged but may not play in a browser or remote receiver. MarsAmp uses reviewed or usable embedded tags when available and conservative cleaned path-derived names otherwise. There is no gapless playback or visual audio analyzer.
 
 Sysops can inspect catalog state, add or remove approved additional locations, and request a rescan through **Administration → MarsAmp**. A rescan skips symbolic links, recycle/trash directories, unsupported extensions, and files that disappear during traversal. Missing sources are reported by source label without disclosing their host paths.
 
