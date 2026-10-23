@@ -117,7 +117,11 @@ border. Four-line mode keeps a separate transport row. The main prompt is now
 `Main Lobby`. Both changes are included with the layout setting.
 
 
-MarsAmp remote-output release checks include:
+Validated on 2026-10-23 for MarsAmp remote output:
+
+- all 78 unit tests and all 14 recovered model suites passed in isolated,
+  network-disabled containers; generated player JavaScript passed Node syntax
+  validation and Gitleaks found no secrets
 
 - AirPlay markup, the native WebKit playback-target picker and the W3C Remote
   Playback picker are present without loading a third-party JavaScript SDK
@@ -129,3 +133,10 @@ MarsAmp remote-output release checks include:
   is connected, preserving the queue and shuffle behavior
 - unsupported browsers keep ordinary local playback and show a system-output
   fallback message rather than exposing or weakening the stream
+- a copied-production rehearsal retained database integrity, 26,075 tracks,
+  20 playlists and all 853 curated entries
+- the deployed source hash matched the tested source; the replacement stayed
+  healthy with zero restarts, a non-root identity, read-only root filesystem,
+  all capabilities dropped and only the existing loopback HTTP binding
+- the public manifest returned HTTP 200, unauthenticated state remained HTTP
+  401 and a forged receiver capability returned HTTP 403
