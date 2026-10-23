@@ -66,3 +66,36 @@ Validated on 2026-10-23 for Monitor alerts and administration spacing:
 Monitor subscriptions are per SSH login, as before. Banners use the terminal's
 first row with cursor save/restore and a terminal bell. Foreground loops repaint
 the notice for 12 seconds; screens retain their own input handling.
+
+
+Validated on 2026-10-23 for compose-screen flicker:
+
+- 56 unit tests passed, plus the recovered editor/key-decoder model
+- a real PTY produced no output during an idle compose interval spanning
+  multiple resize-poll ticks
+- typing updated changed rows without clearing the screen or repainting the
+  heading; cursor-only movement did not erase or repaint text rows
+- resizing retained the message and refreshed the frame for the new dimensions
+- a Monitor banner preserved the composed message and the send confirmation
+
+The shared mail/board editor keeps its periodic resize check, but redraws only
+when its state changes. Changed content rows are updated in place. A complete
+clear is used only for the initial frame and a terminal resize.
+
+
+Validated on 2026-10-23 for the saved compact-player layout toggle:
+
+- 61 unit tests and all 14 recovered model suites passed
+- three- and four-line players retained aligned borders and B/P/N controls
+  across narrow and wide terminals, both playing and paused
+- listeners could read the setting but could not change it; only music.manage
+  could select 3 or 4 lines, and other values were rejected
+- the chosen layout survived reopening the music database
+- the administration L command changed the saved setting and refreshed the
+  local status cache; periodic title updates retained the current frame height
+  until the next Lobby redraw
+- the compact player's scroll region followed its actual number of rows
+
+The new player defaults to three lines, with the transport keys in its bottom
+border. Four-line mode keeps a separate transport row. The main prompt is now
+`Main Lobby`. Both changes are included with the layout setting.

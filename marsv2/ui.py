@@ -87,6 +87,7 @@ _mini_started = 0.0
 _mini_signature: object = None
 _mini_geometry = (0, 0)
 _mini_row = 1
+_mini_layout = 3
 
 
 def _mini_text(value: object) -> str:
@@ -114,7 +115,7 @@ def _mini_refresh() -> bool:
     return True
 
 
-def _mini_lines(columns: int, now: float | None = None) -> list[str]:
+def _mini_lines(columns: int, now: float | None = None, *, layout: int | None = None) -> list[str]:
     inner = min(38, columns - 4)
     track = _mini_state.get("track")
     if isinstance(track, dict):
@@ -138,14 +139,16 @@ def _mini_lines(columns: int, now: float | None = None) -> list[str]:
     caption = " MARSAMP "
     lines = ["┌" + caption.center(inner, "─") + "┐",
              "│ ♪ " + label + " ♪ │",
-             "│" + controls.center(inner) + "│",
-             "└" + "─" * inner + "┘"]
+             "└" + controls.center(inner, "─") + "┘"]
+    selected_layout = _mini_state.get("compact_player_lines", 3) if layout is None else layout
+    if selected_layout == 4:
+        lines = lines[:2] + ["│" + controls.center(inner) + "│", "└" + "─" * inner + "┘"]
     padding = " " * max(0, (columns - inner - 2) // 2)
     return [padding + line for line in lines]
 
 
 def _mini_heading(title: str = "", *, lobby: bool = False, row: int = 1) -> None:
-    global _mini_visible, _mini_geometry, _mini_row
+    global _mini_visible, _mini_geometry, _mini_row, _mini_layout
     size = shutil.get_terminal_size((80, 24))
     if (not _mini_token or not lobby or width() < 34 or size.lines < 24
             or (width() < 60 and size.lines < 32) or not _mini_refresh()):
@@ -153,11 +156,14 @@ def _mini_heading(title: str = "", *, lobby: bool = False, row: int = 1) -> None
     _mini_visible = True
     _mini_geometry = (width(), size.lines)
     _mini_row = row
-    for line in _mini_lines(width()):
+    _mini_layout = 4 if _mini_state.get("compact_player_lines") == 4 else 3
+    lines = _mini_lines(width(), layout=_mini_layout)
+    for line in lines:
         print(styled(line, CYAN))
     if sys.stdout.isatty() and os.environ.get("TERM") != "dumb":
         # Keep the player stationary even if a long post or a notice scrolls.
-        sys.stdout.write(f"\033[{row + 4};{size.lines}r\033[{row + 4};1H")
+        first_content_row = row + len(lines)
+        sys.stdout.write(f"\033[{first_content_row};{size.lines}r\033[{first_content_row};1H")
         sys.stdout.flush()
 
 
@@ -171,7 +177,7 @@ def _mini_tick() -> None:
         return
     _mini_refresh()
     sys.stdout.write("\0337")
-    for row, line in enumerate(_mini_lines(width()), _mini_row):
+    for row, line in enumerate(_mini_lines(width(), layout=_mini_layout), _mini_row):
         sys.stdout.write(f"\033[{row};1H" + styled(line, CYAN))
     sys.stdout.write("\0338")
     sys.stdout.flush()
@@ -992,7 +998,8 @@ def scan_new_posts(token: str) -> None:
 def _draw_mail_editor(recipient: str, subject: str, buffer: EditorBuffer,
                       scroll: int, status: str, mode: str, editor_title: str,
                       destination_label: str, submit_label: str,
-                      allow_draft: bool) -> tuple[int, int, int, int]:
+                      allow_draft: bool, previous_frame: list[str] | None = None
+                      ) -> tuple[int, int, int, int]:
     size = shutil.get_terminal_size((80, 24))
     columns = max(20, min(120, size.columns))
     screen_lines = max(12, size.lines)
@@ -1014,23 +1021,32 @@ def _draw_mail_editor(recipient: str, subject: str, buffer: EditorBuffer,
         scroll = cursor_row - body_height + 1
     scroll = max(0, min(scroll, max(0, len(visual) - body_height)))
 
-    sys.stdout.write("\033[?25l\033[2J\033[H")
-    sys.stdout.write(styled(clip(editor_title, columns), BOLD, CYAN) + "\r\n")
-    sys.stdout.write(styled(separator, DIM) + "\r\n")
-    sys.stdout.write(clip(f"{destination_label + ':':8}" + safe_text(recipient), columns)
-                     + "\r\n")
-    sys.stdout.write(clip("Subject: " + safe_text(subject), columns) + "\r\n")
-    sys.stdout.write(styled(separator, DIM) + "\r\n")
+    lines = [styled(clip(editor_title, columns), BOLD, CYAN),
+             styled(separator, DIM),
+             clip(f"{destination_label + ':':8}" + safe_text(recipient), columns),
+             clip("Subject: " + safe_text(subject), columns),
+             styled(separator, DIM)]
     for index in range(scroll, scroll + body_height):
         if index < len(visual):
             row = visual[index]
-            sys.stdout.write(safe_text(buffer.text[row.start:row.end]) + "\r\n")
+            lines.append(safe_text(buffer.text[row.start:row.end]))
         else:
-            sys.stdout.write("\r\n")
-    sys.stdout.write(styled(separator, DIM) + "\r\n")
-    for help_line in help_lines:
-        sys.stdout.write(clip(help_line, columns) + "\r\n")
-    sys.stdout.write(clip(status, columns))
+            lines.append("")
+    lines.append(styled(separator, DIM))
+    lines.extend(clip(line, columns) for line in help_lines)
+    lines.append(clip(status, columns))
+    previous = previous_frame if previous_frame is not None else []
+    updates: list[str] = []
+    if not previous:
+        updates.append("\033[?25l\033[2J\033[H")
+    for row_number, line in enumerate(lines, 1):
+        if row_number > len(previous) or previous[row_number - 1] != line:
+            if not updates:
+                updates.append("\033[?25l")
+            updates.append(f"\033[{row_number};1H\033[K" + line)
+    if previous_frame is not None:
+        previous_frame[:] = lines
+    sys.stdout.write("".join(updates))
     terminal_row = 6 + cursor_row - scroll
     terminal_column = 1 + min(cursor_column, wrap_width)
     sys.stdout.write(f"\033[{terminal_row};{terminal_column}H\033[?25h")
@@ -1057,6 +1073,9 @@ def mail_editor(recipient: str, subject: str, initial: str = "",
     status = f"{len(buffer.text)} / {buffer.maximum} characters"
     mode = "edit"
     last_size = -1
+    frame: list[str] = []
+    rendered_state = None
+    banner_was_active = False
     pager = _active_pager
     previous_hangup = signal.getsignal(signal.SIGHUP)
 
@@ -1067,9 +1086,22 @@ def mail_editor(recipient: str, subject: str, initial: str = "",
     try:
         tty.setraw(fd)
         while True:
-            scroll, wrap_width, body_height, last_size = _draw_mail_editor(
-                recipient, subject, buffer, scroll, status, mode, editor_title,
-                destination_label, submit_label, allow_draft)
+            size = shutil.get_terminal_size((80, 24))
+            packed_size = (size.columns << 16) | size.lines
+            if last_size != -1 and packed_size != last_size:
+                frame.clear()
+                status = "Terminal resized; message reflowed."
+            banner_active = bool(pager and time.monotonic() <
+                                 getattr(pager, "notification_until", 0.0))
+            if banner_was_active and not banner_active and frame:
+                frame[0] = ""  # Restore the title once a notification expires.
+            banner_was_active = banner_active
+            state = (buffer.text, buffer.cursor, status, mode, packed_size, banner_active)
+            if state != rendered_state:
+                scroll, wrap_width, body_height, last_size = _draw_mail_editor(
+                    recipient, subject, buffer, scroll, status, mode, editor_title,
+                    destination_label, submit_label, allow_draft, previous_frame=frame)
+                rendered_state = state
             sources: list[object] = [fd]
             if pager is not None:
                 sources.append(pager.sock)
@@ -3738,7 +3770,8 @@ def _admin_health(token: str) -> None:
 
 
 def _admin_marsamp(token: str) -> None:
-    """Show the bounded music catalog state and allow an explicit rescan."""
+    """Manage catalog sources and the site-wide compact player layout."""
+    global _mini_poll_at
     notice = ""
     cursor = 0
     while True:
@@ -3753,6 +3786,8 @@ def _admin_marsamp(token: str) -> None:
         heading("MARSAMP ADMINISTRATION", "Catalog status and source maintenance",
                 "SCANNING" if stats.get("scan_running") else "READY")
         print(f"\n  Indexed tracks: {int(stats.get('tracks', 0))}")
+        layout = 4 if stats.get("compact_player_lines") == 4 else 3
+        print(f"  Compact player: {layout} lines")
         last_scan = int(stats.get("last_scan", 0))
         if last_scan:
             stamp = datetime.fromtimestamp(last_scan, timezone.utc).strftime(
@@ -3782,11 +3817,19 @@ def _admin_marsamp(token: str) -> None:
         if notice:
             print(styled("\n" + notice, YELLOW))
         print("\n[↑/↓] move  [A] add location  [D] remove selected  [R] rescan  [X] return")
+        print(f"[L] Compact player: switch to {7 - layout} lines")
         choice = key_input("MarsAmp admin> ")
         if choice in ("x", "q"):
             return
         if choice in ("j", "k", "[", "]"):
             cursor = _move_cursor(choice, cursor, sources)
+        elif choice == "l":
+            try:
+                result = call("music", "admin_player_layout", {"lines": 7 - layout}, token)
+                _mini_poll_at = 0.0
+                notice = f"Compact player set to {result['compact_player_lines']} lines; applies on Lobby redraw."
+            except (OSError, RPCError) as exc:
+                notice = "Request rejected: " + safe_text(exc)
         elif choice == "a":
             name = input("Short source name (lowercase, no spaces; blank cancels): ").strip()
             if not name:
@@ -5536,7 +5579,7 @@ def main() -> None:
                 print("  [H]elp         Command guide")
                 print("  [X] Exit        Log off")
             try:
-                choice = key_input(f"\n[{safe_text(site.get('bbs_name', 'BBS'))} Main Menu] -> ",
+                choice = key_input("\n[Main Lobby] -> ",
                                    escape_command="escape")
             except EOFError:
                 break
