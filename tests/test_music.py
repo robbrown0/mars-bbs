@@ -160,6 +160,7 @@ class MusicTests(unittest.TestCase):
         self.assertIn("/api/queue", page)
         self.assertIn("MediaMetadata", page)
         self.assertIn("/api/artwork/", page)
+        self.assertIn("track.artwork_url", page)
         self.assertIn('id="cover"', page)
         self.assertIn("artwork:[{src:cover}]", page)
         self.assertIn("mediaSession.setActionHandler", page)
@@ -386,6 +387,8 @@ class MusicTests(unittest.TestCase):
     def test_track_artwork_endpoint_is_authenticated_and_path_free(self) -> None:
         track_id = int(self.music._search("Track One", 0, 10)["tracks"][0]["id"])
         with patch("marsv2.musicd.validate", return_value=IDENTITY):
+            self.music.handle(self.request("play", {"id": track_id}),
+                              (1, 29901, 29901))
             pair = self.music.handle(self.request("pair"), (1, 29901, 29901))
         browser = self.redeem(str(pair["url"]))
         MusicHTTP.music = self.music
@@ -405,6 +408,20 @@ class MusicTests(unittest.TestCase):
                        return_value={"ok": True, "data": IDENTITY}):
                 connection = http.client.HTTPConnection(
                     "127.0.0.1", server.server_port, timeout=3)
+                connection.request("GET", "/marsamp/api/state", headers={
+                    "Cookie": "marsamp_session=" + browser,
+                })
+                state_response = connection.getresponse()
+                state = json.loads(state_response.read())
+                connection.close()
+                signed_url = str(state["track"]["artwork_url"])
+                self.assertNotIn(browser, signed_url)
+                self.assertRegex(signed_url,
+                                 r"^/marsamp/artwork/[0-9]+/[0-9a-f]{16}/"
+                                 r"[0-9]{9,12}/[0-9a-f]{64}$")
+
+                connection = http.client.HTTPConnection(
+                    "127.0.0.1", server.server_port, timeout=3)
                 connection.request("GET", f"/marsamp/api/artwork/{track_id}", headers={
                     "Cookie": "marsamp_session=" + browser,
                 })
@@ -415,6 +432,47 @@ class MusicTests(unittest.TestCase):
             self.assertEqual(response.getheader("Content-Type"), "image/jpeg")
             self.assertEqual(payload, self.cover)
             self.assertNotIn(self.temporary.name.encode(), payload)
+
+            connection = http.client.HTTPConnection(
+                "127.0.0.1", server.server_port, timeout=3)
+            connection.request("GET", signed_url)
+            signed_response = connection.getresponse()
+            signed_payload = signed_response.read()
+            connection.close()
+            self.assertEqual(signed_response.status, 200)
+            self.assertEqual(signed_response.getheader("Content-Type"), "image/jpeg")
+            self.assertEqual(signed_response.getheader("Cache-Control"),
+                             "private, max-age=3600, immutable")
+            self.assertEqual(signed_payload, self.cover)
+
+            tampered = signed_url[:-1] + ("0" if signed_url[-1] != "0" else "1")
+            connection = http.client.HTTPConnection(
+                "127.0.0.1", server.server_port, timeout=3)
+            connection.request("GET", tampered)
+            rejected = connection.getresponse()
+            rejected.read()
+            connection.close()
+            self.assertEqual(rejected.status, 403)
+
+            wrong_track = signed_url.replace(
+                f"/artwork/{track_id}/", f"/artwork/{track_id + 1}/")
+            connection = http.client.HTTPConnection(
+                "127.0.0.1", server.server_port, timeout=3)
+            connection.request("GET", wrong_track)
+            rejected = connection.getresponse()
+            rejected.read()
+            connection.close()
+            self.assertEqual(rejected.status, 403)
+
+            expires = int(signed_url.rsplit("/", 2)[1])
+            with patch("marsv2.musicd.time.time", return_value=expires + 1):
+                connection = http.client.HTTPConnection(
+                    "127.0.0.1", server.server_port, timeout=3)
+                connection.request("GET", signed_url)
+                rejected = connection.getresponse()
+                rejected.read()
+                connection.close()
+            self.assertEqual(rejected.status, 403)
         finally:
             server.shutdown()
             server.server_close()

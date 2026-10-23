@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import hmac
 import http.cookies
 import json
 import os
@@ -41,6 +42,8 @@ MAX_RESULTS = 250
 PLAY_MODES = {"sequential", "shuffle"}
 DYNAMIC_ALL = "all"
 ARTWORK_CACHE_BYTES = 32 * 1024 * 1024
+ARTWORK_TICKET_WINDOW = 60 * 60
+ARTWORK_TICKET_LIFETIME = 9 * ARTWORK_TICKET_WINDOW
 DEFAULT_ARTWORK_USER_AGENT = (
     "MarsHotelBBS/1.0 (https://github.com/robbrown0/mars-bbs)"
 )
@@ -191,6 +194,7 @@ class Music:
             tuple[int, int], tuple[str, bytes, str]
         ] = OrderedDict()
         self.artwork_cache_bytes = 0
+        self.artwork_signing_key = secrets.token_bytes(32)
         self.artwork_search_at = 0.0
         self.playlist_definitions = self._load_playlists(playlists_file)
         self.dynamic_playlists = {
@@ -673,6 +677,36 @@ class Music:
         seed = f"{track_id}:{int(row['modified_ns'])}".encode("ascii")
         return hashlib.sha256(seed).hexdigest()[:16]
 
+    def artwork_capability(self, track_id: int, version: str) -> str:
+        """Issue an expiring, artwork-only URL for detached media clients."""
+        if not re.fullmatch(r"[0-9a-f]{16}", version):
+            raise RPCError("invalid artwork version")
+        now = int(time.time())
+        expires = ((now // ARTWORK_TICKET_WINDOW) + 9) * ARTWORK_TICKET_WINDOW
+        message = f"{track_id}:{version}:{expires}".encode("ascii")
+        signature = hmac.new(
+            self.artwork_signing_key, message, hashlib.sha256).hexdigest()
+        return (f"{self.base_path}/artwork/{track_id}/{version}/"
+                f"{expires}/{signature}")
+
+    def validate_artwork_capability(self, track_id: int, version: str,
+                                    expires: int, signature: str) -> bool:
+        """Validate a capability that grants access to one track image only."""
+        now = int(time.time())
+        if (not re.fullmatch(r"[0-9a-f]{16}", version)
+                or not re.fullmatch(r"[0-9a-f]{64}", signature)
+                or expires < now or expires > now + ARTWORK_TICKET_LIFETIME):
+            return False
+        try:
+            if not hmac.compare_digest(version, self.artwork_version(track_id)):
+                return False
+        except RPCError:
+            return False
+        message = f"{track_id}:{version}:{expires}".encode("ascii")
+        expected = hmac.new(
+            self.artwork_signing_key, message, hashlib.sha256).hexdigest()
+        return hmac.compare_digest(signature, expected)
+
     def admin_artwork_search(self, track_id: int, artist: str,
                              album: str) -> dict[str, object]:
         track = self._public_track(track_id)
@@ -821,6 +855,8 @@ class Music:
             try:
                 state["track"] = self._public_track(track_id)
                 state["track"]["artwork_version"] = self.artwork_version(track_id)
+                state["track"]["artwork_url"] = self.artwork_capability(
+                    track_id, str(state["track"]["artwork_version"]))
                 state["stream"] = f"{self.base_path}/audio/{track_id}"
             except RPCError:
                 state.update({"action": "stop", "track_id": 0})
@@ -1313,7 +1349,7 @@ function audioReady(){enabled=true;enable.classList.remove('attention');hint.tex
 async function beginPlayback(){if(!audio.src){hint.textContent='Choose a song in the BBS or queue first.';return}try{await audio.play();audioReady()}catch(error){needsTap()}}
 function sessionEnded(){audio.pause();audio.removeAttribute('src');audio.load();metadataKey='';titleEl.textContent='Session ended';artistEl.textContent='Pair MarsAmp again from the BBS';albumEl.textContent='';hint.textContent='Playback authorization ended.';bars(false);setMediaState('none')}
 function setMediaState(value){if('mediaSession' in navigator){try{navigator.mediaSession.playbackState=value}catch(error){}}}
-function updateMetadata(track){if(!track)return;currentTrack=track;const key=String(track.id)+':'+String(track.artwork_version||'');if(key===metadataKey)return;metadataKey=key;const song=text(track.title)||'Untitled';const artist=text(track.artist)||'The Mars Hotel';const album=text(track.album)||'MarsAmp';const coverURL=new URL(BASE+'/api/artwork/'+encodeURIComponent(track.id),location.origin);coverURL.searchParams.set('v',String(track.artwork_version||'1'));const cover=coverURL.href;document.title=song+' • MarsAmp';coverEl.src=cover;
+function updateMetadata(track){if(!track)return;currentTrack=track;const key=String(track.id)+':'+String(track.artwork_url||track.artwork_version||'');if(key===metadataKey)return;metadataKey=key;const song=text(track.title)||'Untitled';const artist=text(track.artist)||'The Mars Hotel';const album=text(track.album)||'MarsAmp';const legacy=BASE+'/api/artwork/'+encodeURIComponent(track.id)+'?v='+encodeURIComponent(track.artwork_version||'1');const cover=new URL(track.artwork_url||legacy,location.origin).href;document.title=song+' • MarsAmp';coverEl.src=cover;
 if('mediaSession' in navigator&&window.MediaMetadata){navigator.mediaSession.metadata=new MediaMetadata({title:song,artist:artist,album:album,artwork:[{src:cover}]})}}
 function updatePosition(){elapsed.value=clock(audio.currentTime);durationEl.value=clock(audio.duration);seek.value=Number.isFinite(audio.duration)&&audio.duration>0?Math.round(audio.currentTime/audio.duration*1000):0;
 if('mediaSession' in navigator&&Number.isFinite(audio.duration)&&audio.duration>0){try{navigator.mediaSession.setPositionState({duration:audio.duration,playbackRate:audio.playbackRate,position:Math.min(audio.currentTime,audio.duration)})}catch(error){}}}
@@ -1345,12 +1381,13 @@ class MusicHTTP(BaseHTTPRequestHandler):
         return
 
     def _headers(self, status: int, content_type: str, length: int = 0,
-                 extra: dict[str, str] | None = None) -> None:
+                 extra: dict[str, str] | None = None,
+                 cache_control: str = "no-store") -> None:
         self.send_response(status)
         self.send_header("Content-Type", content_type)
         if length:
             self.send_header("Content-Length", str(length))
-        self.send_header("Cache-Control", "no-store")
+        self.send_header("Cache-Control", cache_control)
         self.send_header("Referrer-Policy", "no-referrer")
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("X-Frame-Options", "DENY")
@@ -1404,6 +1441,19 @@ class MusicHTTP(BaseHTTPRequestHandler):
             self._headers(200, "image/png", len(payload))
             self.wfile.write(payload)
             return
+        signed_artwork = re.fullmatch(
+            r"/artwork/([1-9][0-9]{0,9})/([0-9a-f]{16})/"
+            r"([0-9]{9,12})/([0-9a-f]{64})", path)
+        if signed_artwork:
+            track_id = integer(int(signed_artwork.group(1)), "track id")
+            if not self.music.validate_artwork_capability(
+                    track_id, signed_artwork.group(2), int(signed_artwork.group(3)),
+                    signed_artwork.group(4)):
+                self._headers(403, "text/plain; charset=utf-8")
+                return
+            self._track_artwork(
+                track_id, head=False, cache_control="private, max-age=3600, immutable")
+            return
         if path == "/manifest.webmanifest":
             payload = _player_manifest(self.music.base_path)
             self._headers(200, "application/manifest+json", len(payload))
@@ -1454,6 +1504,19 @@ class MusicHTTP(BaseHTTPRequestHandler):
 
     def do_HEAD(self) -> None:  # noqa: N802 - stdlib handler contract
         path = self._path()
+        signed_artwork = re.fullmatch(
+            r"/artwork/([1-9][0-9]{0,9})/([0-9a-f]{16})/"
+            r"([0-9]{9,12})/([0-9a-f]{64})", path or "")
+        if signed_artwork:
+            track_id = integer(int(signed_artwork.group(1)), "track id")
+            if not self.music.validate_artwork_capability(
+                    track_id, signed_artwork.group(2), int(signed_artwork.group(3)),
+                    signed_artwork.group(4)):
+                self._headers(403, "text/plain; charset=utf-8")
+                return
+            self._track_artwork(
+                track_id, head=True, cache_control="private, max-age=3600, immutable")
+            return
         try:
             self._identity()
             artwork = re.fullmatch(r"/api/artwork/([1-9][0-9]{0,9})", path or "")
@@ -1495,9 +1558,10 @@ class MusicHTTP(BaseHTTPRequestHandler):
         except RPCError as exc:
             self._json({"error": str(exc)}, 401)
 
-    def _track_artwork(self, track_id: int, head: bool) -> None:
+    def _track_artwork(self, track_id: int, head: bool,
+                       cache_control: str = "no-store") -> None:
         mime_type, payload, _source = self.music.artwork(track_id)
-        self._headers(200, mime_type, len(payload))
+        self._headers(200, mime_type, len(payload), cache_control=cache_control)
         if not head:
             self.wfile.write(payload)
 
