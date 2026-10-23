@@ -51,6 +51,20 @@ stored on persistent appdata and mounted read-only. Provider authentication and
 a fresh four-benchmark board passed without provider warnings. No API key is
 included in this repository.
 
+Validated on 2026-10-23 for the MarsAmp metadata normalization campaign:
+
+- all 76 unit tests and all 14 recovered model suites passed in isolated,
+  network-disabled test containers
+- a read-only audit parsed tags from all 26,075 production tracks with zero
+  read errors; its private path inventory remains outside Git
+- an isolated real-file fixture returned `Sweet Child O' Mine`,
+  `Guns N' Roses`, and `Greatest Hits` from embedded tags while leaving the
+  source file untouched
+- canonical metadata invalidation, placeholder rejection, administrator
+  confirmation/audit/reset, raw-value retention and legacy cover lookup passed
+- curated playlists contained no placeholder metadata; the three untagged
+  playlist tracks retained clean path-derived names
+
 
 Validated on 2026-10-23 for Monitor alerts and administration spacing:
 

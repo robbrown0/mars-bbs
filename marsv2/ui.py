@@ -3928,6 +3928,102 @@ def _admin_marsamp_artwork(token: str) -> None:
                 notice = _admin_marsamp_artwork_track(token, tracks[cursor])
 
 
+def _admin_marsamp_metadata(token: str) -> None:
+    """Review canonical display names without renaming read-only NAS files."""
+    notice = ""
+    while True:
+        heading("MARSAMP METADATA REVIEW",
+                "Canonical names are reversible; original files and paths stay unchanged")
+        if notice:
+            print(styled("\n" + notice, YELLOW))
+        query = input("\nArtist, album, or song (blank returns): ").strip()
+        if not query:
+            return
+        try:
+            tracks = list(call("music", "search", {
+                "query": query[:80], "offset": 0, "limit": 40}, token).get("tracks", []))
+        except (OSError, RPCError) as exc:
+            notice = "Catalog search failed: " + safe_text(exc)
+            continue
+        if not tracks:
+            notice = "No catalog tracks matched that search."
+            continue
+        cursor = 0
+        while True:
+            heading("SELECT TRACK METADATA", "Enter compares raw and canonical names",
+                    f"{len(tracks)} RESULTS")
+            start, end = page_window(tracks, cursor)
+            for position in range(start, end):
+                track = tracks[position]
+                line = (f"{position + 1:3}. " + safe_text(track.get("artist", "")) +
+                        " — " + safe_text(track.get("album", "")) +
+                        " — " + safe_text(track.get("title", "")))
+                print(styled(clip(line, width()), REVERSE) if position == cursor else
+                      clip(line, width()))
+            print("\n[↑/↓] move  [Enter] inspect/edit  [F] new search  [X] return")
+            choice = key_input("Metadata> ")
+            if choice in ("x", "q"):
+                return
+            if choice == "f":
+                break
+            if choice in ("j", "k", "[", "]"):
+                cursor = _move_cursor(choice, cursor, tracks)
+                continue
+            if choice != "":
+                continue
+            track_id = int(tracks[cursor]["id"])
+            try:
+                status = call("music", "admin_metadata_status", {
+                    "track_id": track_id}, token)
+            except (OSError, RPCError) as exc:
+                notice = "Metadata check failed: " + safe_text(exc)
+                continue
+            raw = dict(status.get("raw", {}))
+            current = dict(status.get("canonical", {}))
+            heading("REVIEW TRACK NAMES", "Raw catalog values are retained for rollback")
+            print("\nRaw path-derived values:")
+            print("  Title:  " + safe_text(raw.get("title", "")))
+            print("  Artist: " + safe_text(raw.get("artist", "")))
+            print("  Album:  " + safe_text(raw.get("album", "")))
+            print("\nCanonical display values:")
+            print("  Title:  " + safe_text(current.get("title", "")))
+            print("  Artist: " + safe_text(current.get("artist", "")))
+            print("  Album:  " + safe_text(current.get("album", "")))
+            print("  Source: " + safe_text(current.get("metadata_source", "path")) +
+                  " / confidence " + str(int(current.get("metadata_confidence", 25))))
+            action = input(
+                "\nType EDIT to enter reviewed names, RESET to use tags, or blank to cancel: "
+            ).strip()
+            if action == "RESET":
+                try:
+                    reset = call("music", "admin_metadata_reset", {
+                        "track_id": track_id, "confirm": "RESET"}, token)
+                    tracks[cursor] = dict(reset.get("canonical", tracks[cursor]))
+                    notice = "Reviewed metadata removed; current embedded tags are active."
+                except (OSError, RPCError) as exc:
+                    notice = "Metadata reset rejected: " + safe_text(exc)
+                continue
+            if action != "EDIT":
+                continue
+            title = input("Title [" + safe_text(current.get("title", "")) + "]: ").strip() \
+                or str(current.get("title", ""))
+            artist = input("Artist [" + safe_text(current.get("artist", "")) + "]: ").strip() \
+                or str(current.get("artist", ""))
+            album = input("Album [" + safe_text(current.get("album", "")) + "]: ").strip() \
+                or str(current.get("album", ""))
+            if input("Type SAVE to store this reviewed display metadata: ").strip() != "SAVE":
+                notice = "Metadata unchanged."
+                continue
+            try:
+                saved = call("music", "admin_metadata_update", {
+                    "track_id": track_id, "title": title, "artist": artist,
+                    "album": album, "confirm": "SAVE"}, token)
+                tracks[cursor] = dict(saved.get("canonical", tracks[cursor]))
+                notice = "Reviewed metadata saved; the NAS file was not changed."
+            except (OSError, RPCError) as exc:
+                notice = "Metadata update rejected: " + safe_text(exc)
+
+
 def _admin_marsamp(token: str) -> None:
     """Manage catalog sources and the site-wide compact player layout."""
     global _mini_poll_at
@@ -3946,6 +4042,10 @@ def _admin_marsamp(token: str) -> None:
                 "SCANNING" if stats.get("scan_running") else "READY")
         print(f"\n  Indexed tracks: {int(stats.get('tracks', 0))}")
         print(f"  Confirmed covers: {int(stats.get('artwork_overrides', 0))}")
+        metadata = stats.get("metadata", {})
+        if isinstance(metadata, dict):
+            print(f"  Canonical names: {int(metadata.get('canonical', 0)):,} "
+                  f"({int(metadata.get('fallback', 0)):,} path fallbacks)")
         layout = 4 if stats.get("compact_player_lines") == 4 else 3
         print(f"  Compact player: {layout} lines")
         last_scan = int(stats.get("last_scan", 0))
@@ -3978,6 +4078,7 @@ def _admin_marsamp(token: str) -> None:
             print(styled("\n" + notice, YELLOW))
         print("\n[↑/↓] move  [A] add location  [D] remove selected  [R] rescan  [X] return")
         print("[C] Cover artwork: review local art or confirm a web match")
+        print("[M] Metadata names: compare raw tags and save reviewed corrections")
         print(f"[L] Compact player: switch to {7 - layout} lines")
         choice = key_input("MarsAmp admin> ")
         if choice in ("x", "q"):
@@ -3993,6 +4094,8 @@ def _admin_marsamp(token: str) -> None:
                 notice = "Request rejected: " + safe_text(exc)
         elif choice == "c":
             _admin_marsamp_artwork(token)
+        elif choice == "m":
+            _admin_marsamp_metadata(token)
         elif choice == "a":
             name = input("Short source name (lowercase, no spaces; blank cancels): ").strip()
             if not name:

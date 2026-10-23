@@ -2,6 +2,10 @@
 
 MarsAmp is an optional authenticated music player for the BBS. The ANSI screen inside the SSH session searches the catalog and sends playback commands. A polished retro HTTPS player supplies the audio because SSH terminal protocols do not provide an audio channel. The same page works in a current desktop browser and in an iPhone or iPad browser. Apple browsers may require the listener to tap **PLAY** once before playback can begin.
 
+Display names are normalized without renaming or retagging NAS files. See
+[MarsAmp metadata normalization](marsamp-metadata.md) for precedence,
+confidence, administrator review, backup and rollback behavior.
+
 The Mars Hotel deployment uses two read-only libraries in this order:
 
 1. `nas01`, the primary music library

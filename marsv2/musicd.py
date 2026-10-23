@@ -25,6 +25,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import quote, unquote, urlparse
 
+from tinytag import TinyTag, TinyTagException
+
 from .artwork import (
     ArtworkError, download_release_group_cover, local_artwork,
     search_release_groups,
@@ -64,6 +66,10 @@ SUPPORTED = {
     ".wma": "audio/x-ms-wma",
 }
 SKIP_DIRECTORIES = {"#recycle", "@recycle", ".trash", ".trashes"}
+PLACEHOLDER_TAGS = {
+    "artist", "album", "title", "track", "unknown", "unknown artist",
+    "unknown album", "untitled",
+}
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS player_settings (
@@ -91,6 +97,34 @@ CREATE TABLE IF NOT EXISTS tracks (
 );
 CREATE INDEX IF NOT EXISTS tracks_search
   ON tracks(available,title,artist,album);
+CREATE TABLE IF NOT EXISTS track_metadata (
+  track_id INTEGER PRIMARY KEY REFERENCES tracks(id) ON DELETE CASCADE,
+  title TEXT NOT NULL DEFAULT '',
+  artist TEXT NOT NULL DEFAULT '',
+  album TEXT NOT NULL DEFAULT '',
+  album_artist TEXT NOT NULL DEFAULT '',
+  track_number TEXT NOT NULL DEFAULT '',
+  disc_number TEXT NOT NULL DEFAULT '',
+  year TEXT NOT NULL DEFAULT '',
+  source_type TEXT NOT NULL CHECK(source_type IN ('embedded','reviewed')),
+  confidence INTEGER NOT NULL CHECK(confidence BETWEEN 0 AND 100),
+  file_modified_ns INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  updated_by TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS track_metadata_source
+  ON track_metadata(source_type,confidence);
+CREATE TABLE IF NOT EXISTS track_metadata_audit (
+  id INTEGER PRIMARY KEY,
+  track_id INTEGER NOT NULL,
+  action TEXT NOT NULL,
+  old_metadata_json TEXT NOT NULL,
+  new_metadata_json TEXT NOT NULL,
+  changed_at INTEGER NOT NULL,
+  changed_by TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS track_metadata_audit_track
+  ON track_metadata_audit(track_id,changed_at);
 CREATE TABLE IF NOT EXISTS extra_sources (
   name TEXT PRIMARY KEY,
   relative_path TEXT NOT NULL UNIQUE,
@@ -166,17 +200,71 @@ def _display_title(value: str) -> str:
     cleaned = re.sub(r"^\s*\(disc\s+\d+\)\s*", "", cleaned,
                      count=1, flags=re.IGNORECASE)
     cleaned = re.sub(
+        r"^\s*\d{1,3}(?:(?:[._]\s*)|(?:-(?!\d)\s*))+", "", cleaned, count=1,
+    )
+    cleaned = re.sub(
         r"^\s*(?:(?:\d{1,2}-\d{1,2})(?:\s*[-_.]\s*|\s+)"
         r"|\d{1,3}(?:\s+|\s*[._]\s*|\s+-\s*|\s*-\s+))(?=\S)",
         "", cleaned, count=1,
     ).lstrip(" -.")
-    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    cleaned = re.sub(r"\s+", " ", cleaned).strip().lstrip("-_. ")
     return cleaned or original or "Untitled"
+
+
+def _display_artist(value: str) -> str:
+    """Make directory-derived artist text readable without guessing identity."""
+    cleaned = _safe_component(value).replace("_", " ")
+    return re.sub(r"\s+", " ", cleaned).strip(" -_.")
+
+
+def _display_album(value: str) -> str:
+    """Remove filename separators and non-title explicit-content markers."""
+    cleaned = _safe_component(value).replace("_", " ")
+    cleaned = re.sub(r"\s*[\[(]\s*explicit\s*[\])]\s*", " ", cleaned,
+                     flags=re.IGNORECASE)
+    return re.sub(r"\s+", " ", cleaned).strip(" -_.")
+
+
+def _tag_text(value: object, maximum: int = 160) -> str:
+    """Normalize trusted tag text while preserving spelling and punctuation."""
+    if value is None:
+        return ""
+    cleaned = unicodedata.normalize("NFC", str(value))
+    cleaned = "".join(ch if 32 <= ord(ch) != 127 else " " for ch in cleaned)
+    return re.sub(r"\s+", " ", cleaned).strip()[:maximum]
+
+
+CATALOG_COLUMNS = """
+t.id,
+CASE WHEN m.file_modified_ns=t.modified_ns AND m.title<>'' THEN m.title ELSE t.title END AS title,
+CASE WHEN m.file_modified_ns=t.modified_ns AND m.artist<>'' THEN m.artist ELSE t.artist END AS artist,
+CASE WHEN m.file_modified_ns=t.modified_ns AND m.album<>'' THEN m.album ELSE t.album END AS album,
+t.title AS raw_title,t.artist AS raw_artist,t.album AS raw_album,
+t.source,t.relative_path,t.extension,t.mime_type,t.size,t.modified_ns,t.available,
+CASE WHEN m.file_modified_ns=t.modified_ns THEN m.album_artist ELSE '' END AS album_artist,
+CASE WHEN m.file_modified_ns=t.modified_ns THEN m.track_number ELSE '' END AS track_number,
+CASE WHEN m.file_modified_ns=t.modified_ns THEN m.disc_number ELSE '' END AS disc_number,
+CASE WHEN m.file_modified_ns=t.modified_ns THEN m.year ELSE '' END AS year,
+CASE WHEN m.file_modified_ns=t.modified_ns THEN m.source_type ELSE 'path' END AS metadata_source,
+CASE WHEN m.file_modified_ns=t.modified_ns THEN m.confidence ELSE 25 END AS metadata_confidence
+"""
+TITLE_EXPR = "CASE WHEN m.file_modified_ns=t.modified_ns AND m.title<>'' THEN m.title ELSE t.title END"
+ARTIST_EXPR = "CASE WHEN m.file_modified_ns=t.modified_ns AND m.artist<>'' THEN m.artist ELSE t.artist END"
+ALBUM_EXPR = "CASE WHEN m.file_modified_ns=t.modified_ns AND m.album<>'' THEN m.album ELSE t.album END"
+CATALOG_JOIN = " FROM tracks t LEFT JOIN track_metadata m ON m.track_id=t.id "
 
 
 def _public_row(row: sqlite3.Row | dict[str, object]) -> dict[str, object]:
     result = dict(row)
     result["title"] = _display_title(str(result.get("title", "")))
+    result["artist"] = _display_artist(str(result.get("artist", "")))
+    result["album"] = _display_album(str(result.get("album", "")))
+    result.pop("relative_path", None)
+    result.pop("modified_ns", None)
+    result.pop("available", None)
+    result.pop("raw_title", None)
+    result.pop("raw_artist", None)
+    result.pop("raw_album", None)
     return result
 
 
@@ -212,8 +300,12 @@ class Music:
             except (ValueError, TypeError):
                 continue
         self.scan_running = False
+        self.metadata_running = False
         self.last_scan = 0
         self.last_scan_result: dict[str, object] = {"tracks": 0, "errors": []}
+        self.last_metadata_result: dict[str, object] = {
+            "examined": 0, "updated": 0, "skipped": 0, "errors": 0,
+        }
         self.artwork_user_agent = os.environ.get(
             "MARSAMP_ARTWORK_USER_AGENT", DEFAULT_ARTWORK_USER_AGENT)[:240]
         self.artwork_cache: OrderedDict[
@@ -320,7 +412,7 @@ class Music:
         """Resolve portable artist/title definitions against this host's catalog."""
         with self.lock:
             available = self.db.execute(
-                "SELECT id,title,artist,album FROM tracks WHERE available=1"
+                "SELECT " + CATALOG_COLUMNS + CATALOG_JOIN + "WHERE t.available=1"
             ).fetchall()
             by_artist: dict[str, list[sqlite3.Row]] = {}
             for row in available:
@@ -408,6 +500,117 @@ class Music:
                          "available": available})
         return rows
 
+    def metadata_stats(self) -> dict[str, object]:
+        with self.lock:
+            total = int(self.db.execute(
+                "SELECT count(*) FROM tracks WHERE available=1").fetchone()[0])
+            rows = self.db.execute(
+                "SELECT m.source_type,count(*) AS tracks FROM track_metadata m "
+                "JOIN tracks t ON t.id=m.track_id "
+                "WHERE t.available=1 AND m.file_modified_ns=t.modified_ns "
+                "GROUP BY m.source_type"
+            ).fetchall()
+        counts = {str(row["source_type"]): int(row["tracks"]) for row in rows}
+        tagged = sum(counts.values())
+        return {"total": total, "canonical": tagged,
+                "fallback": max(0, total - tagged), "sources": counts,
+                "running": self.metadata_running,
+                "last_result": dict(self.last_metadata_result)}
+
+    def admin_metadata_status(self, track_id: int) -> dict[str, object]:
+        with self.lock:
+            raw = self.db.execute(
+                "SELECT id,title,artist,album,modified_ns FROM tracks "
+                "WHERE id=? AND available=1", (track_id,)).fetchone()
+            current = self.db.execute(
+                "SELECT " + CATALOG_COLUMNS + CATALOG_JOIN +
+                "WHERE t.id=? AND t.available=1", (track_id,)).fetchone()
+        if raw is None or current is None:
+            raise RPCError("track unavailable")
+        raw_result = {key: raw[key] for key in ("id", "title", "artist", "album")}
+        return {"raw": raw_result, "canonical": _public_row(current)}
+
+    def admin_metadata_update(self, identity: dict[str, object], track_id: int,
+                              title: str, artist: str, album: str) -> dict[str, object]:
+        with self.lock:
+            track = self.db.execute(
+                "SELECT id,modified_ns FROM tracks WHERE id=? AND available=1",
+                (track_id,),
+            ).fetchone()
+            if track is None:
+                raise RPCError("track unavailable")
+            previous = self.db.execute(
+                "SELECT title,artist,album,album_artist,track_number,disc_number,year,"
+                "source_type,confidence FROM track_metadata WHERE track_id=?",
+                (track_id,),
+            ).fetchone()
+            now = int(time.time())
+            by = str(identity.get("userid", "administrator"))[:64]
+            new_value = {"title": title, "artist": artist, "album": album,
+                         "source_type": "reviewed", "confidence": 100}
+            self.db.execute("BEGIN IMMEDIATE")
+            try:
+                self.db.execute(
+                    "INSERT INTO track_metadata(track_id,title,artist,album,album_artist,"
+                    "track_number,disc_number,year,source_type,confidence,file_modified_ns,"
+                    "updated_at,updated_by) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?) "
+                    "ON CONFLICT(track_id) DO UPDATE SET title=excluded.title,"
+                    "artist=excluded.artist,album=excluded.album,"
+                    "source_type=excluded.source_type,confidence=excluded.confidence,"
+                    "file_modified_ns=excluded.file_modified_ns,"
+                    "updated_at=excluded.updated_at,updated_by=excluded.updated_by",
+                    (track_id, title, artist, album, "", "", "", "", "reviewed", 100,
+                     int(track["modified_ns"]), now, by),
+                )
+                self.db.execute(
+                    "INSERT INTO track_metadata_audit(track_id,action,old_metadata_json,"
+                    "new_metadata_json,changed_at,changed_by) VALUES(?,?,?,?,?,?)",
+                    (track_id, "review", json.dumps(dict(previous) if previous else {},
+                                                     separators=(",", ":")),
+                     json.dumps(new_value, separators=(",", ":")), now, by),
+                )
+                self.db.execute("COMMIT")
+            except BaseException:
+                self.db.execute("ROLLBACK")
+                raise
+        self._refresh_playlists()
+        return self.admin_metadata_status(track_id)
+
+    def admin_metadata_reset(self, identity: dict[str, object],
+                             track_id: int) -> dict[str, object]:
+        """Remove a reviewed value, then recover current embedded tags."""
+        with self.lock:
+            track = self.db.execute(
+                "SELECT id FROM tracks WHERE id=? AND available=1", (track_id,)
+            ).fetchone()
+            if track is None:
+                raise RPCError("track unavailable")
+            previous = self.db.execute(
+                "SELECT title,artist,album,album_artist,track_number,disc_number,year,"
+                "source_type,confidence FROM track_metadata WHERE track_id=?",
+                (track_id,),
+            ).fetchone()
+            if previous is None or previous["source_type"] != "reviewed":
+                raise RPCError("track does not have reviewed metadata")
+            now = int(time.time())
+            by = str(identity.get("userid", "administrator"))[:64]
+            self.db.execute("BEGIN IMMEDIATE")
+            try:
+                self.db.execute("DELETE FROM track_metadata WHERE track_id=?", (track_id,))
+                self.db.execute(
+                    "INSERT INTO track_metadata_audit(track_id,action,old_metadata_json,"
+                    "new_metadata_json,changed_at,changed_by) VALUES(?,?,?,?,?,?)",
+                    (track_id, "reset", json.dumps(dict(previous), separators=(",", ":")),
+                     "{}", now, by),
+                )
+                self.db.execute("COMMIT")
+            except BaseException:
+                self.db.execute("ROLLBACK")
+                raise
+        self.refresh_metadata()
+        self._refresh_playlists()
+        return self.admin_metadata_status(track_id)
+
     def add_source(self, name: str, relative: str) -> dict[str, object]:
         if not re.fullmatch(r"[a-z][a-z0-9_-]{0,31}", name):
             raise RPCError("source name must be lowercase letters, numbers, dash, or underscore")
@@ -449,6 +652,123 @@ class Music:
             key: value for key, value in self.browser_sessions.items()
             if float(value["expires"]) >= now
         }
+
+    def refresh_metadata(self) -> dict[str, object]:
+        """Read embedded tags without changing audio files or raw path metadata.
+
+        Existing entries tied to the current file modification stamp are cheap
+        to skip, so the first catalog campaign is comprehensive while later
+        rescans only parse new or changed files. Administrator-reviewed rows
+        are never silently replaced.
+        """
+        with self.lock:
+            if self.metadata_running:
+                return dict(self.last_metadata_result)
+            self.metadata_running = True
+            rows = self.db.execute(
+                "SELECT t.id,t.source,t.relative_path,t.title,t.artist,t.album,t.modified_ns,"
+                "m.source_type,m.file_modified_ns FROM tracks t "
+                "LEFT JOIN track_metadata m ON m.track_id=t.id "
+                "WHERE t.available=1 ORDER BY t.id"
+            ).fetchall()
+        sources = self._all_sources()
+        examined = updated = skipped = errors = 0
+        pending: list[tuple[object, ...]] = []
+
+        def flush() -> None:
+            nonlocal pending
+            if not pending:
+                return
+            with self.lock:
+                self.db.execute("BEGIN IMMEDIATE")
+                try:
+                    self.db.executemany(
+                        "INSERT INTO track_metadata(track_id,title,artist,album,album_artist,"
+                        "track_number,disc_number,year,source_type,confidence,file_modified_ns,"
+                        "updated_at,updated_by) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?) "
+                        "ON CONFLICT(track_id) DO UPDATE SET title=excluded.title,"
+                        "artist=excluded.artist,album=excluded.album,"
+                        "album_artist=excluded.album_artist,track_number=excluded.track_number,"
+                        "disc_number=excluded.disc_number,year=excluded.year,"
+                        "source_type=excluded.source_type,confidence=excluded.confidence,"
+                        "file_modified_ns=excluded.file_modified_ns,"
+                        "updated_at=excluded.updated_at,updated_by=excluded.updated_by "
+                        "WHERE track_metadata.source_type='embedded'",
+                        pending,
+                    )
+                    self.db.execute("COMMIT")
+                except BaseException:
+                    self.db.execute("ROLLBACK")
+                    raise
+            pending = []
+
+        try:
+            for row in rows:
+                examined += 1
+                modified_ns = int(row["modified_ns"])
+                if (row["file_modified_ns"] is not None
+                        and int(row["file_modified_ns"]) == modified_ns):
+                    skipped += 1
+                    continue
+                if row["source_type"] == "reviewed":
+                    # A changed file invalidates the reviewed row via its stamp,
+                    # but only an administrator may replace that decision.
+                    skipped += 1
+                    continue
+                root = sources.get(str(row["source"]))
+                if root is None:
+                    errors += 1
+                    continue
+                filename = os.path.realpath(os.path.join(root, str(row["relative_path"])))
+                if (os.path.commonpath((root, filename)) != root
+                        or os.path.islink(filename)):
+                    errors += 1
+                    continue
+                try:
+                    tag = TinyTag.get(filename, image=False, duration=False)
+                except (OSError, TinyTagException, ValueError):
+                    errors += 1
+                    continue
+                title = _tag_text(tag.title)
+                artist = _tag_text(tag.artist)
+                album = _tag_text(tag.album)
+                album_artist = _tag_text(tag.albumartist)
+                if not any((title, artist, album, album_artist)):
+                    skipped += 1
+                    continue
+                if any(value.casefold() in PLACEHOLDER_TAGS
+                       for value in (title, artist, album) if value):
+                    skipped += 1
+                    continue
+                title_matches = (_music_key(_display_title(str(row["title"]))) ==
+                                 _music_key(_display_title(title))) if title else False
+                artist_matches = (_music_key(str(row["artist"])) ==
+                                  _music_key(artist)) if artist else False
+                if title and artist and album:
+                    confidence = 95 if title_matches and artist_matches else \
+                        90 if title_matches or artist_matches else 80
+                elif title and artist:
+                    confidence = 85 if title_matches or artist_matches else 75
+                else:
+                    confidence = 65
+                pending.append((
+                    int(row["id"]), title, artist, album, album_artist,
+                    _tag_text(tag.track, 24), _tag_text(tag.disc, 24),
+                    _tag_text(tag.year, 24), "embedded", confidence, modified_ns,
+                    int(time.time()), "tag-scan",
+                ))
+                updated += 1
+                if len(pending) >= 250:
+                    flush()
+            flush()
+            result = {"examined": examined, "updated": updated,
+                      "skipped": skipped, "errors": errors}
+            with self.lock:
+                self.last_metadata_result = result
+            return result
+        finally:
+            with self.lock:
+                self.metadata_running = False
 
     def scan(self, claimed: bool = False) -> dict[str, object]:
         if not claimed:
@@ -521,9 +841,13 @@ class Music:
                 found_total += len(found)
             with self.lock:
                 self.last_scan = int(time.time())
-                self.last_scan_result = {"tracks": found_total, "errors": errors}
+            metadata = self.refresh_metadata()
             self._refresh_playlists()
-            return {"started": True, "tracks": found_total, "errors": errors}
+            result = {"started": True, "tracks": found_total, "errors": errors,
+                      "metadata": metadata}
+            with self.lock:
+                self.last_scan_result = result
+            return result
         finally:
             with self.lock:
                 self.scan_running = False
@@ -538,19 +862,20 @@ class Music:
         return {"started": True}
 
     def _search(self, query: str, offset: int, limit: int) -> dict[str, object]:
-        clauses = ["available=1"]
+        clauses = ["t.available=1"]
         parameters: list[object] = []
         if query:
             pattern = "%" + _escape_like(query) + "%"
-            clauses.append("(title LIKE ? ESCAPE '\\' OR artist LIKE ? ESCAPE '\\' "
-                           "OR album LIKE ? ESCAPE '\\')")
+            clauses.append("(" + TITLE_EXPR + " LIKE ? ESCAPE '\\' OR " +
+                           ARTIST_EXPR + " LIKE ? ESCAPE '\\' OR " +
+                           ALBUM_EXPR + " LIKE ? ESCAPE '\\')")
             parameters.extend((pattern, pattern, pattern))
         where = " WHERE " + " AND ".join(clauses)
         with self.lock:
             total = int(self.db.execute(
-                "SELECT count(*) FROM tracks" + where, parameters).fetchone()[0])
+                "SELECT count(*)" + CATALOG_JOIN + where, parameters).fetchone()[0])
             rows = self.db.execute(
-                "SELECT id,title,artist,album,source,extension,size FROM tracks" + where +
+                "SELECT " + CATALOG_COLUMNS + CATALOG_JOIN + where +
                 " ORDER BY artist COLLATE NOCASE,album COLLATE NOCASE,title COLLATE NOCASE "
                 "LIMIT ? OFFSET ?", parameters + [limit, offset]).fetchall()
         return {"tracks": [_public_row(row) for row in rows], "total": total,
@@ -584,8 +909,8 @@ class Music:
                 total = int(self.db.execute(
                     "SELECT count(*) FROM tracks WHERE available=1").fetchone()[0])
                 rows = self.db.execute(
-                    "SELECT id,title,artist,album,source,extension,size FROM tracks "
-                    "WHERE available=1 ORDER BY artist COLLATE NOCASE,album COLLATE NOCASE,"
+                    "SELECT " + CATALOG_COLUMNS + CATALOG_JOIN +
+                    "WHERE t.available=1 ORDER BY artist COLLATE NOCASE,album COLLATE NOCASE,"
                     "title COLLATE NOCASE LIMIT ? OFFSET ?", (limit, offset)
                 ).fetchall()
             else:
@@ -594,8 +919,9 @@ class Music:
                     "WHERE pt.playlist_slug=? AND t.available=1", (slug,)
                 ).fetchone()[0])
                 rows = self.db.execute(
-                    "SELECT t.id,t.title,t.artist,t.album,t.source,t.extension,t.size "
+                    "SELECT " + CATALOG_COLUMNS + " "
                     "FROM playlist_tracks pt JOIN tracks t ON t.id=pt.track_id "
+                    "LEFT JOIN track_metadata m ON m.track_id=t.id "
                     "WHERE pt.playlist_slug=? AND t.available=1 "
                     "ORDER BY pt.position LIMIT ? OFFSET ?", (slug, limit, offset)
                 ).fetchall()
@@ -609,16 +935,17 @@ class Music:
     def _public_track(self, track_id: int) -> dict[str, object]:
         with self.lock:
             row = self.db.execute(
-                "SELECT id,title,artist,album,source,extension,size,mime_type "
-                "FROM tracks WHERE id=? AND available=1", (track_id,)).fetchone()
+                "SELECT " + CATALOG_COLUMNS + CATALOG_JOIN +
+                "WHERE t.id=? AND t.available=1", (track_id,)).fetchone()
         if row is None:
             raise RPCError("track unavailable")
         return _public_row(row)
 
     def _track_file(self, track_id: int) -> tuple[sqlite3.Row, str]:
         with self.lock:
-            row = self.db.execute("SELECT * FROM tracks WHERE id=? AND available=1",
-                                  (track_id,)).fetchone()
+            row = self.db.execute(
+                "SELECT " + CATALOG_COLUMNS + CATALOG_JOIN +
+                "WHERE t.id=? AND t.available=1", (track_id,)).fetchone()
         sources = self._all_sources()
         if row is None or str(row["source"]) not in sources:
             raise RPCError("track unavailable")
@@ -640,6 +967,19 @@ class Music:
         album = _music_key(str(row["album"]))
         return artist + "\x1f" + album if artist and album else ""
 
+    @classmethod
+    def _artwork_keys(cls, row: sqlite3.Row | dict[str, object]) -> list[str]:
+        """Prefer canonical identity while retaining pre-campaign overrides."""
+        keys = [cls._artwork_key(row)]
+        raw = {
+            "artist": row.get("raw_artist", "") if isinstance(row, dict)
+            else row["raw_artist"],
+            "album": row.get("raw_album", "") if isinstance(row, dict)
+            else row["raw_album"],
+        }
+        keys.append(cls._artwork_key(raw))
+        return list(dict.fromkeys(key for key in keys if key))
+
     def _cache_artwork(self, key: tuple[int, int], value: tuple[str, bytes, str]) -> None:
         size = len(value[1])
         if size > ARTWORK_CACHE_BYTES:
@@ -657,12 +997,14 @@ class Music:
     def artwork(self, track_id: int) -> tuple[str, bytes, str]:
         """Return confirmed, embedded, folder, or branded fallback artwork."""
         row, filename = self._track_file(track_id)
-        artwork_key = self._artwork_key(row)
-        if artwork_key:
+        artwork_keys = self._artwork_keys(row)
+        if artwork_keys:
             with self.lock:
                 confirmed = self.db.execute(
-                    "SELECT mime_type,image FROM album_artwork WHERE artwork_key=?",
-                    (artwork_key,),
+                    "SELECT mime_type,image FROM album_artwork WHERE artwork_key IN (" +
+                    ",".join("?" for _ in artwork_keys) + ") "
+                    "ORDER BY CASE artwork_key WHEN ? THEN 0 ELSE 1 END LIMIT 1",
+                    artwork_keys + [artwork_keys[0]],
                 ).fetchone()
             if confirmed is not None:
                 return str(confirmed["mime_type"]), bytes(confirmed["image"]), "confirmed"
@@ -690,16 +1032,18 @@ class Music:
         """Return an opaque change token without exposing file metadata."""
         with self.lock:
             row = self.db.execute(
-                "SELECT artist,album,modified_ns FROM tracks WHERE id=? AND available=1",
-                (track_id,),
+                "SELECT " + CATALOG_COLUMNS + CATALOG_JOIN +
+                "WHERE t.id=? AND t.available=1", (track_id,),
             ).fetchone()
             if row is None:
                 raise RPCError("track unavailable")
-            artwork_key = self._artwork_key(row)
+            artwork_keys = self._artwork_keys(row)
             confirmed = (self.db.execute(
-                "SELECT image_sha256 FROM album_artwork WHERE artwork_key=?",
-                (artwork_key,),
-            ).fetchone() if artwork_key else None)
+                "SELECT image_sha256 FROM album_artwork WHERE artwork_key IN (" +
+                ",".join("?" for _ in artwork_keys) + ") "
+                "ORDER BY CASE artwork_key WHEN ? THEN 0 ELSE 1 END LIMIT 1",
+                artwork_keys + [artwork_keys[0]],
+            ).fetchone() if artwork_keys else None)
         if confirmed is not None:
             return str(confirmed["image_sha256"])[:16]
         seed = f"{track_id}:{int(row['modified_ns'])}".encode("ascii")
@@ -782,14 +1126,16 @@ class Music:
                 "mime_type": mime_type, "bytes": len(data), "sha256": digest}
 
     def admin_artwork_remove(self, track_id: int) -> dict[str, object]:
-        track = self._public_track(track_id)
-        artwork_key = self._artwork_key(track)
-        if not artwork_key:
+        row, _filename = self._track_file(track_id)
+        track = _public_row(row)
+        artwork_keys = self._artwork_keys(row)
+        if not artwork_keys:
             raise RPCError("this track has no album artwork override")
         with self.lock, self.db:
             cursor = self.db.execute(
-                "DELETE FROM album_artwork WHERE artwork_key=?", (artwork_key,))
-        if cursor.rowcount != 1:
+                "DELETE FROM album_artwork WHERE artwork_key IN (" +
+                ",".join("?" for _ in artwork_keys) + ")", artwork_keys)
+        if cursor.rowcount < 1:
             raise RPCError("this album has no confirmed artwork override")
         return {"removed": True, "track": track}
 
@@ -1007,9 +1353,9 @@ class Music:
             return []
         placeholders = ",".join("?" for _ in track_ids)
         rows = self.db.execute(
-            "SELECT id,title,artist,album FROM tracks WHERE available=1 "
-            f"AND id IN ({placeholders})", track_ids).fetchall()
-        by_id = {int(row["id"]): dict(row) for row in rows}
+            "SELECT " + CATALOG_COLUMNS + CATALOG_JOIN +
+            f"WHERE t.available=1 AND t.id IN ({placeholders})", track_ids).fetchall()
+        by_id = {int(row["id"]): _public_row(row) for row in rows}
         return [by_id[track_id] for track_id in track_ids if track_id in by_id]
 
     def queue_view(self, account_id: int) -> dict[str, object]:
@@ -1161,7 +1507,8 @@ class Music:
             health.update({"sources": list(self._all_sources()), "last_scan": self.last_scan,
                            "last_scan_result": self.last_scan_result,
                            "compact_player_lines": self.player_layout(),
-                           "artwork_overrides": artwork_overrides})
+                           "artwork_overrides": artwork_overrides,
+                           "metadata": self.metadata_stats()})
             return health
         if op == "admin_player_layout":
             self._require(ident, MANAGE_CAPABILITY)
@@ -1209,6 +1556,28 @@ class Music:
             if set(data) != {"track_id", "confirm"} or data.get("confirm") != "REMOVE":
                 raise RPCError("invalid artwork removal confirmation")
             return self.admin_artwork_remove(integer(data["track_id"], "track id"))
+        if op == "admin_metadata_status":
+            self._require(ident, MANAGE_CAPABILITY)
+            if set(data) != {"track_id"}:
+                raise RPCError("invalid metadata status request")
+            return self.admin_metadata_status(integer(data["track_id"], "track id"))
+        if op == "admin_metadata_update":
+            self._require(ident, MANAGE_CAPABILITY)
+            if set(data) != {"track_id", "title", "artist", "album", "confirm"} \
+                    or data.get("confirm") != "SAVE":
+                raise RPCError("invalid metadata update confirmation")
+            return self.admin_metadata_update(
+                ident, integer(data["track_id"], "track id"),
+                text(data["title"], "title", 160, 1).strip(),
+                text(data["artist"], "artist", 160, 1).strip(),
+                text(data["album"], "album", 160).strip(),
+            )
+        if op == "admin_metadata_reset":
+            self._require(ident, MANAGE_CAPABILITY)
+            if set(data) != {"track_id", "confirm"} or data.get("confirm") != "RESET":
+                raise RPCError("invalid metadata reset confirmation")
+            return self.admin_metadata_reset(
+                ident, integer(data["track_id"], "track id"))
         if op == "search":
             query = text(data.get("query", ""), "search", 80).strip()
             offset = integer(data.get("offset", 0), "offset", 0, 10_000_000)
