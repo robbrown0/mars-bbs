@@ -66,3 +66,11 @@ scanning. Production remains at 26,075 tracks, 25,835 canonical metadata rows,
 healthy, read-only, non-root, capability-free and bound to loopback, and its
 immediate predecessor plus a consistent private database snapshot were
 retained for rollback.
+
+The same evening, the player header badge was shortened to **SECURE** and the
+remote-output control received a scalable cast-device glyph, refined spacing
+and a persistent connected treatment. The rendering change passed all 78
+application tests, generated-player JavaScript validation and secret scanning.
+The deployed source hash matched the tested source; the replacement music
+container is healthy with zero restarts, and its predecessor plus a fresh
+consistent database snapshot remain available for rollback.

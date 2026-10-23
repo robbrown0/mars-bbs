@@ -140,3 +140,9 @@ Validated on 2026-10-23 for MarsAmp remote output:
   all capabilities dropped and only the existing loopback HTTP binding
 - the public manifest returned HTTP 200, unauthenticated state remained HTTP
   401 and a forged receiver capability returned HTTP 403
+
+The subsequent visual-polish release retained all 78 passing tests and valid
+generated JavaScript. Production verification confirmed the shortened
+**SECURE** badge, inline cast glyph and persistent **SPEAKER CONNECTED** label;
+the deployed source hash matched, database integrity remained OK and the new
+music container stayed healthy with zero restarts.
