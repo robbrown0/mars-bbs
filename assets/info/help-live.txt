@@ -46,3 +46,10 @@ uses the immutable BBS account identity.
 Talk Center can set the pager Available or Do Not Disturb. Monitor provides
 session-local online/offline notices for a selected member. No monitor list is
 silently retained after logout.
+
+MONITOR ALERTS
+
+Monitor uses a local-member picker. A monitored member's sign-in or sign-out
+is announced with a highlighted banner and terminal bell throughout the BBS,
+including Chat, IRC, message editors and external games. The banner preserves
+your cursor and typed text. Monitor subscriptions last for this SSH session.
