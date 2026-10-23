@@ -1,3 +1,4 @@
+/bin/bash: warning: setlocale: LC_ALL: cannot change locale (C.UTF-8): No such file or directory
 # Tests and validation
 
 All recovery tests use new containers, networks, volumes and credentials. They do not mount or contact production databases.
@@ -146,3 +147,16 @@ generated JavaScript. Production verification confirmed the shortened
 **SECURE** badge, inline cast glyph and persistent **SPEAKER CONNECTED** label;
 the deployed source hash matched, database integrity remained OK and the new
 music container stayed healthy with zero restarts.
+
+The compact-output follow-up retained all 78 passing unit tests and all 14
+recovered model suites. Generated JavaScript passed Node syntax validation and
+Gitleaks found no secrets. Production verification confirmed that the former
+output card is absent, the device glyph shares the play-mode row, the deployed
+source SHA-256 is
+`3757796637017d02dde2504592c395353ef6e0ed552ec6cc072226836c38d25e`,
+the music database remains integral with 26,075 available tracks and 853
+curated entries, the public manifest returns HTTP 200 and unauthenticated state
+returns HTTP 401. The replacement runs non-root with a read-only root,
+`no-new-privileges`, all capabilities dropped, loopback-only HTTP and zero
+restarts. The consistent pre-deployment database snapshot SHA-256 is
+`ef88a21711de50bb5f65a689abb08894cab09a391e89104d59ba24cc1fe1541a`.

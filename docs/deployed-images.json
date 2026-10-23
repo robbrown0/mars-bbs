@@ -1,3 +1,4 @@
+/bin/bash: warning: setlocale: LC_ALL: cannot change locale (C.UTF-8): No such file or directory
 [
   {
     "service": "gateway",
@@ -74,8 +75,8 @@
   {
     "service": "music",
     "container": "mars-v2final-music",
-    "image": "sha256:747e39a275e5c4b8056e3bdd8e95a4fddafa4ba891b6e018686e414d3ae0d14d",
-    "tag": "mars-hotel-v2-service:cast-polish-20261023",
+    "image": "sha256:fe2a5491807b123e05c35d5d074df211e9ed48c1d769e520514a1ce1ae5e4f0e",
+    "tag": "mars-hotel-v2-service:output-control-20261023",
     "user": "21012:21012",
     "running": true,
     "read_only": true
