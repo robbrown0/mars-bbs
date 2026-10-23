@@ -1,4 +1,3 @@
-/bin/bash: warning: setlocale: LC_ALL: cannot change locale (C.UTF-8): No such file or directory
 from __future__ import annotations
 
 import http.client

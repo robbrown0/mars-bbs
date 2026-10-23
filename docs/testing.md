@@ -1,4 +1,3 @@
-/bin/bash: warning: setlocale: LC_ALL: cannot change locale (C.UTF-8): No such file or directory
 # Tests and validation
 
 All recovery tests use new containers, networks, volumes and credentials. They do not mount or contact production databases.
