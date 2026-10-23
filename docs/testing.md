@@ -53,7 +53,7 @@ included in this repository.
 
 Validated on 2026-10-23 for the MarsAmp metadata normalization campaign:
 
-- all 76 unit tests and all 14 recovered model suites passed in isolated,
+- all 77 unit tests and all 14 recovered model suites passed in isolated,
   network-disabled test containers
 - a read-only audit parsed tags from all 26,075 production tracks with zero
   read errors; its private path inventory remains outside Git
@@ -64,6 +64,8 @@ Validated on 2026-10-23 for the MarsAmp metadata normalization campaign:
   confirmation/audit/reset, raw-value retention and legacy cover lookup passed
 - curated playlists contained no placeholder metadata; the three untagged
   playlist tracks retained clean path-derived names
+- a production-database rehearsal preserved all 853 curated entries and the
+  exact prior set of 358 selected track IDs after canonicalization
 
 
 Validated on 2026-10-23 for Monitor alerts and administration spacing:
