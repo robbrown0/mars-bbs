@@ -34,7 +34,7 @@ A Sysop grants the historical-style `Music` role to listeners. Only accounts wit
 
 When a listener selects a song without an actively polling browser sink, MarsAmp selects the track and immediately presents a boxed OSC 8 **OPEN MARSAMP IN BROWSER** button. Opening it pairs the browser with the already selected song. The player attempts playback immediately where browser policy permits it. If iPhone, iPad, or another browser blocks audible autoplay, the page highlights a large **PLAY** button that must be tapped once. The plain URL and the explicit `L` link-audio command remain available as fallbacks. SSH provides no standard or safe way for a remote application to force a client browser to open.
 
-The player publishes current title, artist, album, position, per-track album artwork, and play/pause/previous/next/seek actions through the browser Media Session API. Compatible phones and desktop systems can therefore present MarsAmp like a dedicated audio service on the lock screen, notification area, headset controls, or system media panel. Because iOS normally shows only a title and one secondary line, MarsAmp publishes that line as `Artist · Album` while retaining the separate album field for clients that render it. Long values are truncated by the operating system. Filename-derived track and disc numbers are removed from presented titles without renaming the audio file or changing its stored catalog identity. The operating system ultimately decides which controls and artwork it displays. The page also includes installable web-app metadata and appropriately sized local PNG fallback artwork; these public branding assets contain no account or catalog information.
+The player publishes current title, artist, album, position, per-track album artwork, and play/pause/previous/next actions through the browser Media Session API. Compatible phones and desktop systems can therefore present MarsAmp like a dedicated audio service on the lock screen, notification area, headset controls, or system media panel. Previous/Next are registered in place of ten-second seek actions; the player timeline remains seekable. Because iOS normally shows only a title and one secondary line, MarsAmp publishes that line as `Artist · Album` while retaining the separate album field for clients that render it. Long values are truncated by the operating system. Filename-derived track and disc numbers are removed from presented titles without renaming the audio file or changing its stored catalog identity. Text metadata is committed before artwork so an artwork restriction cannot discard the entire update. The operating system ultimately decides which controls and artwork it displays, and Safari may suppress identifying metadata in Private Browsing. The page also includes installable web-app metadata and appropriately sized local PNG fallback artwork; these public branding assets contain no account or catalog information.
 
 The browser player also has an **AIRPLAY / CAST** output button. Safari uses
 Apple's native AirPlay route picker; compatible Chrome-family browsers use the
@@ -127,10 +127,11 @@ The browser's **PLAY** button can therefore start that stopped selection again,
 including after the player page is refreshed. Successful play, pause and stop
 commands stay visually quiet; connection and playback errors remain visible.
 On browsers with strict media policies, including iOS with an AirPlay route,
-the Play button invokes the media element synchronously within the tap before
-it synchronizes Resume with the server. This preserves the single user gesture
-needed to start audible playback instead of requiring a second tap after the
-network request.
+the Play, Back and Next controls invoke the media element synchronously within
+the tap before synchronizing Resume or the replacement track with the server.
+Lock-screen Previous/Next use the same path. This preserves the single user
+gesture needed to start audible playback instead of requiring a second tap
+after the network request.
 
 The audio element requests the browser's native adaptive buffer for each song.
 When a connection stalls, MarsAmp waits for the browser to recover naturally,
