@@ -306,6 +306,15 @@ class MusicTests(unittest.TestCase):
         self.assertIn("audio.addEventListener('loadedmetadata'", page)
         self.assertIn("audio.addEventListener('playing',()=>{mediaHealthy();refreshMetadata()})", page)
         self.assertIn("mediaSession.setActionHandler", page)
+        self.assertIn("action('previoustrack'", page)
+        self.assertIn("action('nexttrack'", page)
+        self.assertIn("action('seekbackward',null)", page)
+        self.assertIn("action('seekforward',null)", page)
+        self.assertNotIn("details.seekOffset", page)
+        text_metadata = page.split("function publishMetadata", 1)[1].split(
+            "function asDataURL", 1)[0]
+        self.assertLess(text_metadata.index("new MediaMetadata(details)"),
+                        text_metadata.index("artwork:[image]"))
         self.assertIn("manifest.webmanifest", page)
         self.assertIn("audio.addEventListener('ended'", page)
         self.assertIn('id="output"', page)
@@ -369,6 +378,15 @@ class MusicTests(unittest.TestCase):
         self.assertLess(resume.index("beginPlayback()"),
                         resume.index("navigate('/api/resume'"))
         self.assertIn("Promise.all([playback,command])", resume)
+        self.assertIn("async function skipTrack(path,label)", page)
+        skip = page.split("async function skipTrack(path,label)", 1)[1].split(
+            "enable.onclick", 1)[0]
+        self.assertLess(skip.index("beginPlayback()"), skip.index("navigate(path,label)"))
+        self.assertIn("Promise.all([playback,command])", skip)
+        self.assertIn("onclick=()=>skipTrack('/api/previous'", page)
+        self.assertIn("onclick=()=>skipTrack('/api/advance'", page)
+        self.assertIn("action('previoustrack',()=>skipTrack('/api/previous'", page)
+        self.assertIn("action('nexttrack',()=>skipTrack('/api/advance'", page)
         self.assertIn("!enable.classList.contains('attention')", page)
         self.assertIn("navigate('/api/pause','',true)", page)
         self.assertIn("navigate('/api/stop','',true)", page)

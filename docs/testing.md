@@ -393,3 +393,29 @@ Validated on 2026-10-24 for connected AirPlay Output state:
   `mars-v2final-music-rollback-pre-airplay-output-enabled-20261024`
 - the consistent pre-deployment database snapshot SHA-256 is
   `712bc636fb7f1d55f3002b274a7277e30a3ed0e322ce44a99eac53ef4f961f67`
+
+Validated on 2026-10-24 for lock-screen track controls, resilient metadata and
+one-tap AirPlay track changes:
+
+- all 82 tests passed in an isolated, network-disabled, read-only container;
+  the generated player JavaScript passed Node syntax validation
+- Media Session publishes Previous/Next and explicitly removes ten-second
+  seek-back/seek-forward handlers while retaining timeline scrubbing
+- title, artist and album metadata are committed before artwork, so an artwork
+  rejection cannot discard the textual update; Safari/iOS still controls and
+  may suppress identifying metadata in Private Browsing
+- browser Back/Next and lock-screen Previous/Next pre-arm the active media
+  element inside the initiating gesture before synchronizing the replacement
+  track with the server, including with an active AirPlay route
+- deployed image is
+  `sha256:2be5d07bd5fe8328662f0cde0651c3f4603433b97f1ed67c53bef7606a703d7d`;
+  deployed `musicd.py` SHA-256 is
+  `6141456a185be47861fa8cb1a436bed5c534e665f2cfd0cef05179a2218afae6`
+- production is healthy with zero restarts, database integrity OK and 27,486
+  available tracks; non-root, read-only, dropped-capability,
+  `no-new-privileges` and loopback-only restrictions remain in place;
+  unauthenticated state remains HTTP 401
+- the prior production container is preserved, stopped, as
+  `mars-v2final-music-rollback-pre-lockscreen-controls-20261024`
+- the consistent pre-deployment database snapshot SHA-256 is
+  `cbc94ccf3c920d824f9a405ffac8eaec3b5a395e6a8d02b0f69f7f36798c9779`
