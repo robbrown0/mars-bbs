@@ -1,6 +1,3 @@
-Warning: truncated output (original token count: 68807)
-Total output lines: 5986
-
 """Terminal UI for the compartmentalized Mars Hotel Revival V2."""
 
 from __future__ import annotations
@@ -2287,7 +2284,1610 @@ def native_chat(token: str, initial_room: str = "lobby") -> None:
                             running = False
                         elif line.lower() == "/who":
                             chat_send(sock, token, "who")
-                  …18807 tokens truncated…eading("MARSAMP ARTWORK LIBRARY",
+                        elif line.lower() in ("/rooms", "/list"):
+                            chat_send(sock, token, "rooms")
+                        elif line.lower() == "/motd":
+                            chat_send(sock, token, "motd")
+                        elif line.lower() in ("/help", "/?"):
+                            for help_line in _live_help("chat", room_name):
+                                sys.stdout.write(help_line + "\r\n")
+                        elif line.lower().startswith("/join "):
+                            chat_send(sock, token, "join_room", {"room": line[6:].strip()})
+                        elif line.lower().startswith("/whois "):
+                            chat_send(sock, token, "whois", {"userid": line[7:].strip()})
+                        elif line.lower().startswith("/nick "):
+                            chat_send(sock, token, "nick", {"chatid": line[6:].strip()})
+                        elif line.lower().startswith("/ignore "):
+                            chat_send(sock, token, "ignore", {"userid": line[8:].strip()})
+                        elif line.lower().startswith("/unignore "):
+                            chat_send(sock, token, "unignore", {"userid": line[10:].strip()})
+                        elif line.lower().startswith("/me "):
+                            chat_send(sock, token, "action", {"message": line[4:].strip()})
+                        elif line.lower().startswith("/invite "):
+                            chat_send(sock, token, "invite", {"userid": line[8:].strip()})
+                        elif line.lower().startswith("/op "):
+                            chat_send(sock, token, "room_op", {"userid": line[4:].strip()})
+                        elif line.lower().startswith("/kick "):
+                            chat_send(sock, token, "kick", {"userid": line[6:].strip()})
+                        elif line.lower().startswith(("/lock ", "/secret ")):
+                            command_name, setting = line[1:].split(None, 1)
+                            if setting.lower() in ("on", "off"):
+                                chat_send(sock, token, "room_flags", {
+                                    "flag": "locked" if command_name.lower() == "lock" else "secret",
+                                    "enabled": setting.lower() == "on",
+                                })
+                        elif line.lower().startswith("/msg "):
+                            parts = line.split(None, 2)
+                            if len(parts) == 3:
+                                chat_send(sock, token, "private",
+                                          {"userid": parts[1], "message": parts[2]})
+                        else:
+                            chat_send(sock, token, "message", {"message": line})
+                    if running:
+                        _live_prompt(prompt, line_editor)
+                elif key == KEY_BACKSPACE:
+                    line_editor.backspace()
+                    _live_prompt(prompt, line_editor)
+                elif key == KEY_UP:
+                    if line_editor.recall(-1):
+                        _live_prompt(prompt, line_editor)
+                elif key == KEY_DOWN:
+                    if line_editor.recall(1):
+                        _live_prompt(prompt, line_editor)
+                elif key == KEY_CHAR and line_editor.append(value):
+                    _live_prompt(prompt, line_editor)
+    finally:
+        termios.tcsetattr(fd, termios.TCSADRAIN, old)
+        sock.close()
+    print("\nLeaving Chat.")
+    pause()
+
+
+def embedded_irc(token: str, network: str = "local") -> None:
+    """Run the restricted IRC UI over the credential-owning bridge service."""
+    if _active_pager is not None:
+        _active_pager.activity("IRC " + ("Public" if network == "public" else "Local"))
+    sock = socket.socket(socket.AF_UNIX, socket.SOCK_SEQPACKET)
+    try:
+        sock.connect(socket_path("irc"))
+        sock.sendall(encode_packet({"v": PROTOCOL_VERSION, "op": "connect",
+                                    "token": token, "data": {"network": network}}))
+    except OSError as exc:
+        show_error(exc)
+        pause()
+        return
+    clear()
+    print("Connecting to MarsHotel public IRC..." if network == "synchronet"
+          else "Connecting to local IRC...")
+    fd = sys.stdin.fileno()
+    old = termios.tcgetattr(fd)
+    decoder = KeyDecoder()
+    line_editor = LiveCommandLine(400)
+    nick = ""
+    channel = "#lobby"
+    connected = False
+    prompt = ""
+    try:
+        tty.setraw(fd)
+        running = True
+        while running:
+            ready, _, _ = _notice_select([fd, sock], [], [])
+            if sock in ready:
+                raw = sock.recv(MAX_PACKET + 1)
+                if not raw:
+                    break
+                event = decode_packet(raw)["data"]
+                kind = str(event.get("kind", "message"))
+                if kind == "connected":
+                    nick = str(event.get("nick", nick))
+                    channel = str(event.get("channel", channel))
+                elif kind == "channel":
+                    channel = str(event.get("channel", channel))
+                prompt = f"[{channel or 'no-channel'}] {nick}> " if nick else "> "
+                message = str(event.get("message", ""))
+                first_connection = kind == "connected" and not connected
+                if first_connection:
+                    connected = True
+                    _live_notice(message, prompt, line_editor, False)
+                    for help_line in _live_help("irc"):
+                        _live_notice(help_line, prompt, line_editor, False)
+                    _live_notice("Up/Down recalls this session's command history.",
+                                 prompt, line_editor, False)
+                    _live_prompt(prompt, line_editor)
+                else:
+                    _live_notice(message, prompt, line_editor, connected)
+            if fd in ready:
+                key, value = decoder.read(fd)
+                if key != KEY_EOF and _active_pager is not None:
+                    _active_pager.activity()
+                if key in (KEY_INTERRUPT, KEY_EOF, KEY_ESCAPE):
+                    if key == KEY_ESCAPE:
+                        sock.sendall(encode_packet({"v": PROTOCOL_VERSION, "op": "quit",
+                                                    "token": token, "data": {}}))
+                    break
+                if not connected:
+                    continue
+                if key == KEY_ENTER:
+                    line = line_editor.submit()
+                    sys.stdout.write("\r\n")
+                    if line.lower() in ("/exit", "/quit"):
+                        sock.sendall(encode_packet({"v": PROTOCOL_VERSION, "op": "quit",
+                                                    "token": token, "data": {}}))
+                        running = False
+                    elif (line.lower() in ("/help", "/?") or
+                          line.lower().startswith("/help ")):
+                        argument = line[5:] if line.lower().startswith("/help") else ""
+                        for help_line in _irc_help(argument):
+                            sys.stdout.write(help_line + "\r\n")
+                    elif line:
+                        sock.sendall(encode_packet({"v": PROTOCOL_VERSION, "op": "input",
+                                                    "token": token, "data": {"line": line}}))
+                    if running:
+                        _live_prompt(prompt, line_editor)
+                elif key == KEY_BACKSPACE:
+                    line_editor.backspace()
+                    _live_prompt(prompt, line_editor)
+                elif key == KEY_UP:
+                    if line_editor.recall(-1):
+                        _live_prompt(prompt, line_editor)
+                elif key == KEY_DOWN:
+                    if line_editor.recall(1):
+                        _live_prompt(prompt, line_editor)
+                elif key == KEY_CHAR and line_editor.append(value):
+                    _live_prompt(prompt, line_editor)
+    finally:
+        termios.tcsetattr(fd, termios.TCSADRAIN, old)
+        sock.close()
+    print("\nLeaving IRC.")
+    pause()
+
+
+def irc_center(token: str) -> None:
+    """Use one IRC interface for the private and public IRC networks."""
+    while True:
+        heading("IRC CENTER", "One IRC client, private or public network")
+        print("[L]ocal IRC       Embedded IRC on the private Mars network")
+        print("[M]arsHotel       Direct IRC connection to Synchronet #MarsHotel")
+        print("[X] Exit           Return to the Lobby")
+        try:
+            choice = key_input("IRC> ")
+        except EOFError:
+            return
+        except KeyboardInterrupt:
+            continue
+        if choice in ("e", "x", "q"):
+            return
+        if choice == "l":
+            embedded_irc(token, "local")
+        elif choice == "m":
+            embedded_irc(token, "synchronet")
+
+
+def _pane_lines(messages: list[str], columns: int, rows: int) -> list[str]:
+    rendered: list[str] = []
+    for message in messages:
+        rendered.extend(textwrap.wrap(message, width=columns, replace_whitespace=False,
+                                      drop_whitespace=False) or [""])
+    return rendered[-rows:]
+
+
+def _draw_direct_talk(peer: str, incoming: list[str], outgoing: list[str],
+                      buffer: str, status: str, peer_typing: bool = False) -> None:
+    size = shutil.get_terminal_size((80, 24))
+    columns = max(20, min(120, size.columns))
+    pane_rows = max(3, (max(18, size.lines) - 8) // 2)
+    top = _pane_lines(incoming, columns - 2, pane_rows)
+    bottom = _pane_lines(outgoing, columns - 2, pane_rows)
+    divider = "-" * columns
+    sys.stdout.write("\033[2J\033[H")
+    title = (f"TALK < {peer}  (/help)" if columns < 60 else
+             f"DIRECT TALK  < {peer}   (type /help for commands)")
+    sys.stdout.write(styled(clip(title, columns), BOLD, CYAN) + "\r\n")
+    for row in top:
+        sys.stdout.write(row + "\r\n")
+    for _ in range(pane_rows - len(top)):
+        sys.stdout.write("\r\n")
+    sys.stdout.write(styled(divider, DIM) + "\r\n")
+    sys.stdout.write(styled("YOU", BOLD, YELLOW) + "\r\n")
+    for row in bottom:
+        sys.stdout.write(row + "\r\n")
+    for _ in range(pane_rows - len(bottom)):
+        sys.stdout.write("\r\n")
+    sys.stdout.write(styled(divider, DIM) + "\r\n")
+    status_line = f"[{peer} is typing]" if peer_typing else status
+    sys.stdout.write(clip(status_line, columns) + "\r\n")
+    sys.stdout.write("> " + buffer)
+    sys.stdout.flush()
+
+
+def direct_talk(pager: Pager, peer: str, page_id: str | None = None,
+                answering: bool = False) -> tuple[bool, str]:
+    """Run accepted or ringing one-to-one Talk on the session pager socket."""
+    if answering:
+        if page_id is None:
+            return False, ""
+        pager.pending.pop(page_id, None)
+        pager.send("answer_page", {"page_id": page_id})
+        status = f"Answering {peer}..."
+    else:
+        pager.send("page", {"userid": peer})
+        status = f"Paging {peer}..."
+    fd = sys.stdin.fileno()
+    old = termios.tcgetattr(fd)
+    buffer = ""
+    incoming: list[str] = []
+    outgoing: list[str] = []
+    connected = False
+    local_typing = False
+    peer_typing = False
+    active_page_id = page_id
+    final_notice = ""
+    _draw_direct_talk(peer, incoming, outgoing, buffer, status, peer_typing)
+    try:
+        tty.setraw(fd)
+        running = True
+        while running:
+            ready, _, _ = _notice_select([fd, pager.sock], [], [])
+            if pager.sock in ready:
+                event = pager.receive()
+                kind = str(event.get("kind", ""))
+                message = str(event.get("message", ""))
+                if kind == "page_sent":
+                    value = event.get("page_id")
+                    if isinstance(value, str):
+                        active_page_id = value
+                    status = message
+                elif kind == "talk_started":
+                    connected = True
+                    peer = str(event.get("userid", peer))
+                    status = f"[{peer} connected]"
+                    if buffer:
+                        pager.send("talk_typing", {"typing": True})
+                        local_typing = True
+                elif kind == "talk_typing":
+                    peer_typing = bool(event.get("typing"))
+                elif kind == "talk_message":
+                    sender = str(event.get("userid", peer))
+                    if event.get("own"):
+                        outgoing.append(message)
+                    else:
+                        peer_typing = False
+                        incoming.append(f"{sender}: {message}")
+                elif kind in ("talk_ended", "page_declined", "page_expired",
+                              "page_cancelled"):
+                    peer_typing = False
+                    if not connected:
+                        final_notice = message
+                    running = False
+                elif kind == "error":
+                    status = message
+                    if not connected:
+                        final_notice = message
+                        running = False
+                elif kind == "page":
+                    status = message
+                if running:
+                    _draw_direct_talk(peer, incoming, outgoing, buffer, status, peer_typing)
+                    if kind == "talk_started":
+                        status = ""
+            if fd in ready:
+                chunk = os.read(fd, 1)
+                if chunk:
+                    pager.activity()
+                if not chunk or chunk in (b"\x03", b"\x04"):
+                    if connected:
+                        pager.send("talk_end")
+                    elif active_page_id:
+                        pager.send("cancel_page", {"page_id": active_page_id})
+                    break
+                if chunk in (b"\r", b"\n"):
+                    line = buffer
+                    buffer = ""
+                    if local_typing:
+                        pager.send("talk_typing", {"typing": False})
+                        local_typing = False
+                    if line.lower() in ("/exit", "/quit", "/cancel"):
+                        if connected:
+                            pager.send("talk_end")
+                        elif active_page_id:
+                            pager.send("cancel_page", {"page_id": active_page_id})
+                        status = ""
+                    elif line.lower() in ("/help", "/?"):
+                        status = "Commands: /exit ends the call; /help shows this help."
+                    elif line and connected:
+                        pager.send("talk_message", {"message": line})
+                    elif line:
+                        status = "Still ringing; type /cancel to stop paging."
+                    _draw_direct_talk(peer, incoming, outgoing, buffer, status, peer_typing)
+                elif chunk in (b"\x7f", b"\x08"):
+                    buffer = buffer[:-1]
+                    if connected and not buffer and local_typing:
+                        pager.send("talk_typing", {"typing": False})
+                        local_typing = False
+                    _draw_direct_talk(peer, incoming, outgoing, buffer, status, peer_typing)
+                elif 32 <= chunk[0] <= 126 and len(buffer) < 512:
+                    buffer += chunk.decode("ascii")
+                    if connected and not local_typing:
+                        pager.send("talk_typing", {"typing": True})
+                        local_typing = True
+                    _draw_direct_talk(peer, incoming, outgoing, buffer, status, peer_typing)
+    finally:
+        if connected and local_typing:
+            try:
+                pager.send("talk_typing", {"typing": False})
+            except OSError:
+                pass
+        termios.tcsetattr(fd, termios.TCSADRAIN, old)
+    return connected, final_notice
+
+
+def _choose_page(pager: Pager) -> tuple[str, dict[str, object]] | None:
+    pages = list(pager.pending.items())
+    if not pages:
+        print("\nThere are no unanswered pages.")
+        pause()
+        return None
+    if len(pages) == 1:
+        return pages[0]
+    print()
+    for position, (_, event) in enumerate(pages, 1):
+        print(f" {position}. {event.get('userid', 'unknown')}  "
+              f"{event.get('display_name', '')}")
+    try:
+        selected = int(input("Page number: ").strip()) - 1
+    except (ValueError, EOFError):
+        return None
+    if 0 <= selected < len(pages):
+        return pages[selected]
+    return None
+
+
+def _choose_online_user(token: str, pager: Pager) -> str | None:
+    """Choose a Direct Talk peer with immediate keys or type a userid."""
+    cursor = 0
+    selected_user = ""
+    profiles: dict[str, str] = {}
+    while True:
+        try:
+            users = [str(item) for item in call("session", "online", token=token)["users"]
+                     if str(item) != pager.userid]
+            if selected_user in users:
+                cursor = users.index(selected_user)
+            else:
+                cursor = max(0, min(cursor, len(users) - 1)) if users else 0
+            selected_user = users[cursor] if users else ""
+            rows: list[dict[str, object]] = []
+            for name in users:
+                if name not in profiles:
+                    try:
+                        profiles[name] = str(call("auth", "lookup", {"userid": name})
+                                             .get("display_name", ""))
+                    except RPCError:
+                        profiles[name] = ""
+                rows.append({"userid": name, "display_name": profiles[name]})
+        except RPCError as exc:
+            show_error(exc)
+            pause()
+            return None
+
+        heading("DIRECT TALK", "Choose an online user to page")
+        if rows:
+            start, end = page_window(rows, cursor)
+            print(styled(f"{'':2} {'USERID':12} DISPLAY NAME", BOLD))
+            for position in range(start, end):
+                row = rows[position]
+                line = (f"{position + 1:2}. {clip(row['userid'], 12):12} "
+                        f"{clip(row['display_name'], max(16, width() - 19))}")
+                print(styled(line, REVERSE) if position == cursor else line)
+        else:
+            print(styled("No other users are currently online.", DIM))
+        print()
+        print(styled("[↑/↓] move   [Enter] page   [N] type userid   [X] cancel", DIM))
+        try:
+            choice = key_input("Call> ")
+        except EOFError:
+            return None
+        if choice in ("x", "q"):
+            return None
+        if choice == "j":
+            cursor = min(len(rows) - 1, cursor + 1) if rows else 0
+            selected_user = str(rows[cursor]["userid"]) if rows else ""
+        elif choice == "k":
+            cursor = max(0, cursor - 1)
+            selected_user = str(rows[cursor]["userid"]) if rows else ""
+        elif choice == "]" and rows:
+            cursor = min(len(rows) - 1, page_window(rows, cursor)[1])
+            selected_user = str(rows[cursor]["userid"])
+        elif choice == "[" and rows:
+            start, end = page_window(rows, cursor)
+            cursor = max(0, start - max(1, end - start))
+            selected_user = str(rows[cursor]["userid"])
+        elif choice == "" and rows:
+            return str(rows[cursor]["userid"])
+        elif choice == "n":
+            name = input("Userid to page: ").strip().lower()
+            return name or None
+        elif choice.isdigit() and rows:
+            position = int(choice) - 1
+            if 0 <= position < len(rows):
+                return str(rows[position]["userid"])
+
+
+def elapsed(seconds: int) -> str:
+    """Render a compact, stable elapsed time for an 80-column roster."""
+    seconds = max(0, seconds)
+    if seconds < 60:
+        return f"{seconds}s"
+    if seconds < 3600:
+        return f"{seconds // 60}m {seconds % 60:02}s"
+    if seconds < 86400:
+        return f"{seconds // 3600}h {(seconds % 3600) // 60:02}m"
+    return f"{seconds // 86400}d {(seconds % 86400) // 3600:02}h"
+
+
+def online_user_rows(token: str) -> list[dict[str, object]]:
+    """Fetch and validate the privacy-appropriate presence view."""
+    rows = call("session", "online_details", token=token).get("users")
+    if not isinstance(rows, list):
+        raise RPCError("invalid online-user directory")
+    validated: list[dict[str, object]] = []
+    for row in rows:
+        if not isinstance(row, dict) or not isinstance(row.get("userid"), str):
+            raise RPCError("invalid online-user entry")
+        values = (row.get("sessions"), row.get("connected_seconds"),
+                  row.get("idle_seconds"))
+        if any(isinstance(value, bool) or not isinstance(value, int) or value < 0
+               for value in values):
+            raise RPCError("invalid online-user entry")
+        validated.append(row)
+    return validated
+
+
+def render_online_users(rows: list[dict[str, object]]) -> None:
+    """Render presence without network addresses or other connection metadata."""
+    print(styled(f"{'USERID':12} {'SESS':>4} {'CONNECTED':>10} {'IDLE':>10}  ACTIVITY", BOLD))
+    for row in rows:
+        idle = int(row["idle_seconds"])
+        status = "IDLE" if idle >= IDLE_AFTER_SECONDS else str(row.get("activity", "Online"))
+        print(f"{clip(row['userid'], 12):12} {int(row['sessions']):4} "
+              f"{elapsed(int(row['connected_seconds'])):>10} {elapsed(idle):>10}  {status}")
+    if not rows:
+        print(styled("No users are currently online.", DIM))
+
+
+def show_online_users(token: str) -> None:
+    """Clear the terminal and display the complete authenticated presence view."""
+    rows = online_user_rows(token)
+    heading("ACTIVE USERS", f"{len(rows)} user(s) online  /  idle after 5 minutes")
+    render_online_users(rows)
+
+
+def member_directory(token: str) -> None:
+    """Browsable public member directory with live activity and last check-in."""
+    query = ""
+    cursor = 0
+    while True:
+        result = call("auth", "member_directory", {"query": query, "offset": 0})
+        rows = list(result["users"])
+        online = {str(row["userid"]).casefold(): row for row in online_user_rows(token)}
+        cursor = max(0, min(cursor, len(rows) - 1)) if rows else 0
+        heading("MEMBER DIRECTORY", "Public profiles and recent activity",
+                f"{len(online)} ONLINE")
+        print(styled(f"{'':2} {'USERID':12} {'DISPLAY NAME':20} ACTIVITY / LAST LOGIN", BOLD))
+        start, end = page_window(rows, cursor)
+        for position in range(start, end):
+            row = rows[position]
+            active = online.get(str(row["userid"]).casefold())
+            if active:
+                activity = str(active.get("activity", "Online"))
+                if int(active.get("idle_seconds", 0)) >= IDLE_AFTER_SECONDS:
+                    activity = "Idle " + elapsed(int(active["idle_seconds"]))
+            else:
+                last = int(row.get("last_login", 0))
+                activity = "Last " + (mail_datetime(last) if last else "never")
+            line = (f"{position + 1:2}. {clip(row['userid'], 12):12} "
+                    f"{clip(row['display_name'], 20):20} "
+                    f"{clip(activity, max(12, width() - 39))}")
+            print(styled(line, REVERSE) if position == cursor else line)
+        if query:
+            print(styled(f"Filter: {safe_text(query)}", DIM))
+        if not rows:
+            print(styled("No members match this filter.", DIM))
+        print("\n[↑/↓] move  [Enter] profile  [F] filter  [O] online only  [X] exit")
+        choice = key_input("Members> ")
+        if choice in ("x", "q"):
+            return
+        if choice == "j":
+            cursor = min(len(rows) - 1, cursor + 1) if rows else 0
+        elif choice == "k":
+            cursor = max(0, cursor - 1)
+        elif choice == "f":
+            query = input("Userid begins with (blank shows all): ").strip()
+            cursor = 0
+        elif choice == "o":
+            show_online_users(token)
+            pause()
+        elif choice == "" and rows:
+            row = rows[cursor]
+            content = (f"Userid: {row['userid']}\nDisplay name: {row['display_name']}\n"
+                       f"Last login: " + (mail_datetime(row["last_login"])
+                                           if int(row.get("last_login", 0)) else "never") +
+                       "\n\n" + (str(row.get("profile_text", "")) or "No public profile."))
+            _text_viewer("MEMBER PROFILE", "Public account information", content)
+
+
+def talk(token: str, pager: Pager) -> None:
+    notice = ""
+    while True:
+        roster_available = True
+        try:
+            roster = online_user_rows(token)
+        except RPCError:
+            roster = []
+            roster_available = False
+        active_count = str(len(roster)) if roster_available else "?"
+        heading("TALK CENTER", "Native conversation, presence, and profiles",
+                f"ACTIVE: {active_count} / PAGER: {'ON' if pager.available else 'DND'}")
+        if notice:
+            print(notice)
+            notice = ""
+        print("[C]hat       Enter the local native Chat lobby")
+        print("[T]alk       Page a user for split-screen Direct Talk")
+        print(f"[A]nswer     Answer an incoming page ({len(pager.pending)} waiting)")
+        print("[R]eject     Decline an incoming page")
+        print("[U]sers      Full active-user page")
+        print("[P]rofile    View a user's public profile")
+        print("[S]tatus     Toggle pager Available / Do Not Disturb")
+        print("[M]onitor    Notify when a member comes online")
+        print("[D]ate       Show UTC and account date/time")
+        print("[X] Exit")
+        try:
+            choice = key_input("Talk> ")
+        except EOFError:
+            return
+        except KeyboardInterrupt:
+            continue
+        if choice in ("e", "x"):
+            return
+        if choice == "c":
+            native_chat(token)
+        elif choice == "t":
+            try:
+                name = _choose_online_user(token, pager)
+                if name:
+                    connected, call_notice = direct_talk(pager, name)
+                    notice = "[Direct Talk Closed]" if connected else call_notice
+            except (RPCError, ValueError, EOFError) as exc:
+                show_error(exc)
+                pause()
+        elif choice == "a":
+            selected = _choose_page(pager)
+            if selected is not None:
+                page_id, event = selected
+                connected, call_notice = direct_talk(
+                    pager, str(event.get("userid", "unknown")), page_id, True)
+                notice = "[Direct Talk Closed]" if connected else call_notice
+        elif choice == "r":
+            selected = _choose_page(pager)
+            if selected is not None:
+                page_id, event = selected
+                pager.pending.pop(page_id, None)
+                pager.send("decline_page", {"page_id": page_id})
+                print(f"\nPage from {event.get('userid', 'unknown')} declined.")
+                pause()
+        elif choice in ("u", "l", "o"):
+            try:
+                show_online_users(token)
+            except RPCError as exc:
+                show_error(exc)
+            pause()
+        elif choice in ("p", "q"):
+            try:
+                name = input("Userid: ").strip()
+                profile = call("auth", "lookup", {"userid": name})
+                print(f"\n{profile['userid']} - {profile['display_name']}")
+                about = str(profile.get("profile_text", ""))
+                if about:
+                    print(textwrap.fill(about, width=min(width(), 100)))
+            except RPCError as exc:
+                show_error(exc)
+            pause()
+        elif choice == "s":
+            pager.send("pager_status", {"available": not pager.available})
+            try:
+                event = pager.receive()
+                notice = str(event.get("message", "Pager status updated."))
+            except EOFError:
+                return
+        elif choice == "m":
+            try:
+                name = choose_mail_recipient(token, purpose="monitor")
+                if name:
+                    pager.send("monitor", {"userid": name})
+                    notice = f"Monitoring @{name}; sign-in alerts follow you throughout the BBS this session."
+            except (OSError, RPCError) as exc:
+                notice = "Monitor: " + safe_text(exc)
+        elif choice == "d":
+            try:
+                profile = call("auth", "profile")
+                utc_line, local_line = current_time_lines(str(profile["timezone"]))
+                print("\n" + utc_line)
+                print(local_line)
+            except (RPCError, ValueError) as exc:
+                show_error(exc)
+            pause()
+
+
+def board_counts(token: str) -> None:
+    try:
+        listing = call("board", "boards", token=token)["boards"]
+        heading("BOARD ACTIVITY", "Message totals and unread activity")
+        print(styled(f"{'BOARD':24} {'POSTS':>7} {'UNREAD':>8}", BOLD))
+        for board in listing:
+            print(f"{clip(board['name'], 24):24} {int(board['posts']):7} {int(board.get('unread', 0)):8}")
+    except RPCError as exc:
+        show_error(exc)
+    pause()
+
+
+def welcome_screen() -> None:
+    """Browsable About/history center; retained name for menu compatibility."""
+    while True:
+        heading("MARS HOTEL REVIVAL", "About the project and the BBS that inspired it")
+        print("Explore what this Revival is, what is known about the original Mars")
+        print("Hotel, and which details are recovered evidence versus reconstruction.")
+        print()
+        print("[A]bout       About this revival")
+        print("[H]istory     The Mars Hotel story and timeline")
+        print("[E]vidence    Sources, confidence, and honest gaps")
+        print("[X] Exit       Return to the Lobby")
+        try:
+            choice = key_input("Revival> ")
+        except (EOFError, KeyboardInterrupt):
+            return
+        if choice in ("x", "q"):
+            return
+        if choice == "a":
+            _information_page("ABOUT MARS HOTEL REVIVAL", "What you are using", "about.txt")
+        elif choice == "h":
+            _information_page("THE MARS HOTEL", "Verified history and context", "mars-history.txt")
+        elif choice == "e":
+            _information_page("HISTORY NOTES", "Evidence, reconstruction, and open questions",
+                              "historical-evidence.txt")
+
+
+def _information_asset(filename: str) -> str:
+    """Read a shipped, administrator-owned information page."""
+    if not filename.isascii() or not filename.replace("-", "").replace(".", "").isalnum():
+        raise ValueError("invalid information page")
+    asset = Path(__file__).resolve().parent.parent / "assets" / "info" / filename
+    return asset.read_text(encoding="utf-8")
+
+
+def _information_page(title: str, subtitle: str, filename: str) -> None:
+    try:
+        content = _information_asset(filename)
+    except (OSError, UnicodeError, ValueError) as exc:
+        show_error(exc)
+        pause()
+        return
+    _text_viewer(title, subtitle, content)
+
+
+def help_center() -> None:
+    """Topic-oriented command help using the normal safe text viewer."""
+    topics = {
+        "g": ("GETTING AROUND", "Menus, navigation, and common keys", "help-general.txt"),
+        "b": ("BOARDS & MAIL", "Public discussions and private post", "help-boards-mail.txt"),
+        "t": ("TALK & NATIVE CHAT", "Presence, paging, and local conversation", "help-live.txt"),
+        "i": ("IRC & PUBLIC ROOM", "Local IRC and the public MarsHotel room", "help-irc.txt"),
+        "f": ("FILE LIBRARY", "Curated files and the Mars catalog", "help-files.txt"),
+        "n": ("INFORMATION NETWORK", "Weather, wires, radio, quakes, and orbit data",
+              "help-information.txt"),
+        "r": ("GALACTIC ARCADE", "Games, saves, scores, and safe exits", "help-games.txt"),
+        "p": ("PROFILE & TERMINAL", "Profile, password, time zone, and terminal", "help-account.txt"),
+    }
+    while True:
+        heading("HELP CENTER", "Choose a topic; every page is safe to leave with X or Escape")
+        print("[G]eneral      Navigation and keyboard reference")
+        print("[B]oards       Boards, editor, and Post Office")
+        print("[T]alk         Native Chat, paging, and Direct Talk")
+        print("[I]RC          Local IRC and the public MarsHotel room")
+        print("[F]iles        Library, reader, and historical catalog")
+        print("[N]etwork      Live Information Network and data freshness")
+        print("[R]etro games  Galactic Arcade, WOPR, and Oregon Trail")
+        print("[P]rofile      Account, security, terminal, and time zone")
+        print("[X] Exit        Return to the Lobby")
+        try:
+            choice = key_input("Help> ")
+        except (EOFError, KeyboardInterrupt):
+            return
+        if choice in ("x", "q"):
+            return
+        topic = topics.get(choice)
+        if topic is not None:
+            _information_page(*topic)
+
+
+def change_password(identity: dict[str, object]) -> bool:
+    old = getpass.getpass("Old password: ")
+    new = getpass.getpass("New password: ")
+    again = getpass.getpass("Retype new password: ")
+    if new != again:
+        print("Passwords do not match.")
+        changed = False
+    else:
+        try:
+            call("auth", "change_password", {"userid": identity["userid"],
+                                                "old_password": old, "new_password": new})
+            print("Password changed.")
+            identity["password_change_required"] = False
+            changed = True
+        except RPCError as exc:
+            show_error(exc)
+            changed = False
+    pause()
+    return changed
+
+
+def required_password_change(identity: dict[str, object]) -> bool:
+    """Block access after an administrator reset until the user changes it."""
+    for _attempt in range(3):
+        heading("PASSWORD CHANGE REQUIRED",
+                "An administrator issued a temporary password; choose your own before entry")
+        try:
+            new = getpass.getpass("New password (12-64 characters): ")
+            again = getpass.getpass("Retype new password: ")
+        except (EOFError, KeyboardInterrupt):
+            return False
+        if new != again:
+            print("Passwords do not match. Please try again.")
+            continue
+        try:
+            call("auth", "change_password", {"userid": identity["userid"],
+                                               "new_password": new})
+            identity["password_change_required"] = False
+            print("Password changed. Continuing to the Mars Hotel Lobby.")
+            return True
+        except RPCError as exc:
+            show_error(exc)
+    print("Password was not changed; this session will close.")
+    return False
+
+
+def show_account(identity: dict[str, object]) -> None:
+    try:
+        profile = call("auth", "profile")
+        identity["display_name"] = profile["display_name"]
+        print(f"\nUserid:       {profile['userid']}")
+        print(f"Display name: {profile['display_name']}")
+        print(f"Email:        {profile['email'] or '(not set)'}  [private]")
+        print(f"Time zone:    {profile['timezone']}")
+        roles = profile.get("roles", ["Sysop" if profile.get("is_admin") else "Basic-1"])
+        print("Roles:        " + ", ".join(str(role) for role in roles))
+        print("About you:    " + (str(profile["profile_text"]) or "(not set)"))
+        print("Signature:    " + (str(profile.get("signature", "")) or "(not set)"))
+        last_login = int(profile.get("last_login", 0))
+        print("Last login:   " + (mail_datetime(last_login) if last_login else "first visit"))
+    except RPCError as exc:
+        show_error(exc)
+    pause()
+
+
+def edit_account(identity: dict[str, object]) -> None:
+    try:
+        profile = call("auth", "profile")
+        current_display = str(profile["display_name"])
+        current_email = str(profile["email"])
+        current_about = str(profile["profile_text"])
+        current_timezone = str(profile["timezone"])
+        current_signature = str(profile.get("signature", ""))
+        display = input(f"Display name [{current_display}]: ").strip() or current_display
+        email_value = input(
+            f"Email [{current_email or 'not set'}] (blank keeps, '-' clears): ").strip()
+        email = "" if email_value == "-" else (email_value or current_email)
+        if current_about:
+            print("Current About you: " + current_about)
+        about_value = input("About you (blank keeps, '-' clears; 240 characters): ").strip()
+        about = "" if about_value == "-" else (about_value or current_about)
+        if current_signature:
+            print("Current signature:\n" + current_signature)
+        signature_value = input(
+            "Signature (blank keeps, '-' clears; use \\n for lines): ").strip()
+        signature = ("" if signature_value == "-" else
+                     signature_value.replace("\\n", "\n") if signature_value else
+                     current_signature)
+        timezone = choose_timezone(current_timezone)
+        if timezone is None:
+            print("Account changes cancelled; nothing was saved.")
+            pause()
+            return
+        updated = call("auth", "update_profile",
+                       {"display_name": display, "email": email,
+                        "profile_text": about, "timezone": timezone,
+                        "signature": signature})
+        identity["display_name"] = updated["display_name"]
+        print("Account profile updated. Email remains private.")
+    except RPCError as exc:
+        show_error(exc)
+    pause()
+
+
+def utilities(identity: dict[str, object]) -> None:
+    while True:
+        heading("UTILITIES", "Account and terminal settings")
+        print("[A]ccount     Show your account profile")
+        print("[M]odify      Edit display name, email, About you, and time zone")
+        print("[P]assword    Change your password")
+        print("[T]erminal    Show negotiated terminal settings")
+        print("[I]nfo        Version and restoration information")
+        print("[X] Exit")
+        try:
+            choice = key_input("Utilities> ")
+        except EOFError:
+            return
+        except KeyboardInterrupt:
+            continue
+        if choice in ("e", "x"):
+            return
+        if choice == "a":
+            show_account(identity)
+        elif choice == "m":
+            edit_account(identity)
+        elif choice == "p":
+            change_password(identity)
+        elif choice == "t":
+            size = shutil.get_terminal_size((80, 24))
+            print(f"\nTERM={os.environ.get('TERM', 'unknown')}  {size.columns} columns x {size.lines} rows")
+            try:
+                profile = call("auth", "profile")
+                utc_line, local_line = current_time_lines(str(profile["timezone"]))
+                print("Time zone: " + str(profile["timezone"]))
+                print(utc_line)
+                print(local_line)
+            except (RPCError, ValueError) as exc:
+                show_error(exc)
+            pause()
+        elif choice == "i":
+            print("\nMars Hotel Revival V2 - compartmentalized preview")
+            print("Mars Hotel-inspired; reconstructed behavior and locally created content.")
+            pause()
+
+
+ADMIN_CAPABILITIES = {
+    "account.view", "account.manage", "account.password_reset", "account.delete",
+    "account.roles", "board.manage", "board.moderate", "session.manage",
+    "audit.read", "system.health", "federation.manage", "music.manage",
+}
+
+
+def _admin_identity(identity: dict[str, object]) -> dict[str, object]:
+    """Refresh roles at the authority before drawing privileged controls."""
+    profile = call("auth", "profile")
+    identity["roles"] = list(profile.get("roles", []))
+    identity["capabilities"] = list(profile.get("capabilities", []))
+    identity["is_admin"] = bool(profile.get("is_admin"))
+    return identity
+
+
+def _can(identity: dict[str, object], capability: str) -> bool:
+    values = identity.get("capabilities", [])
+    return isinstance(values, list) and capability in values
+
+
+def _admin_matches(rows: list[dict[str, object]], query: str,
+                   fields: tuple[str, ...]) -> list[dict[str, object]]:
+    """Filter bounded authority results without trusting values for output."""
+    needle = query.strip().casefold()
+    if not needle:
+        return rows
+    return [row for row in rows if any(
+        needle in (", ".join(str(value) for value in row.get(field, []))
+                   if isinstance(row.get(field), list) else str(row.get(field, ""))).casefold()
+        for field in fields)]
+
+
+def _selected(rows: list[dict[str, object]], cursor: int) -> dict[str, object] | None:
+    return rows[cursor] if rows and 0 <= cursor < len(rows) else None
+
+
+def _admin_role_picker(userid: object, definitions: list[dict[str, object]],
+                       current_roles: object) -> list[str] | None:
+    """Select effective roles without accepting free-form authorization names."""
+    if not definitions:
+        return None
+    ordered = [str(role["name"]) for role in definitions]
+    selected = {str(role) for role in current_roles} if isinstance(
+        current_roles, (list, tuple, set)) else {"Basic-1"}
+    selected.intersection_update(ordered)
+    if not selected:
+        selected = {"Basic-1"}
+    cursor = 0
+    notice = ""
+    while True:
+        heading("ASSIGN ROLES", f"Account: {safe_text(userid)}  /  server-enforced authorization",
+                f"{len(selected)} selected")
+        start, end = page_window(definitions, cursor)
+        for position in range(start, end):
+            name = ordered[position]
+            marker = "X" if name in selected else " "
+            line = f"{position + 1:2}. [{marker}] {name}"
+            print(styled(line, REVERSE) if position == cursor else line)
+        active = definitions[cursor]
+        print("\n" + textwrap.fill(safe_text(active["description"]),
+                                   width=max(20, min(width(), 78))))
+        if notice:
+            print(styled(notice, YELLOW))
+        print("\n[↑/↓] move   [Space/Enter] toggle   [S] Save   [X] Cancel")
+        try:
+            choice = key_input("Roles> ")
+        except (EOFError, KeyboardInterrupt):
+            return None
+        if choice in ("x", "q"):
+            return None
+        if choice == "j":
+            cursor = min(len(definitions) - 1, cursor + 1)
+            continue
+        if choice == "k":
+            cursor = max(0, cursor - 1)
+            continue
+        if choice in (" ", ""):
+            role = ordered[cursor]
+            if role in selected:
+                selected.remove(role)
+                if not selected:
+                    selected.add("Basic-1")
+                    notice = "Every account needs an effective role; Basic-1 retained."
+                else:
+                    notice = ""
+            elif role == "Basic-1":
+                selected = {"Basic-1"}
+                notice = "Basic-1 is the ordinary-member role."
+            elif role == "Sysop":
+                selected = {"Sysop"}
+                notice = "Sysop is exclusive because it includes every authority."
+            else:
+                selected.discard("Basic-1")
+                selected.discard("Sysop")
+                selected.add(role)
+                notice = ""
+            continue
+        if choice == "s":
+            return [name for name in ordered if name in selected]
+
+
+def _admin_member_picker(token: str, title: str,
+                         selected_names: list[str]) -> list[str] | None:
+    selected = {name.casefold(): name for name in selected_names}
+    query = ""
+    cursor = 0
+    while True:
+        rows = list(call("auth", "member_directory", {"query": query, "offset": 0})["users"])
+        cursor = max(0, min(cursor, len(rows) - 1)) if rows else 0
+        heading(title, "Filter and toggle members; no free-form account names",
+                f"{len(selected)} SELECTED")
+        start, end = page_window(rows, cursor)
+        for position in range(start, end):
+            row = rows[position]
+            marker = "X" if str(row["userid"]).casefold() in selected else " "
+            line = f"{position + 1:2}. [{marker}] {clip(row['userid'], 12):12} {row['display_name']}"
+            print(styled(line, REVERSE) if position == cursor else line)
+        if query:
+            print(styled(f"Filter: {query}", DIM))
+        print("\n[↑/↓] move  [Space/Enter] toggle  [F] filter  [S] save  [X] cancel")
+        choice = key_input("Members> ")
+        if choice in ("x", "q"):
+            return None
+        if choice == "j":
+            cursor = min(len(rows) - 1, cursor + 1) if rows else 0
+        elif choice == "k":
+            cursor = max(0, cursor - 1)
+        elif choice == "f":
+            query = input("Userid begins with (blank shows all): ").strip()
+            cursor = 0
+        elif choice in ("", " ") and rows:
+            name = str(rows[cursor]["userid"])
+            key = name.casefold()
+            if key in selected:
+                del selected[key]
+            elif len(selected) < 32:
+                selected[key] = name
+        elif choice == "s":
+            return sorted(selected.values(), key=str.casefold)
+
+
+def _admin_accounts(token: str, identity: dict[str, object]) -> None:
+    notice = ""
+    query = ""
+    cursor = 0
+    while True:
+        try:
+            all_rows = list(call("auth", "admin_accounts")["accounts"])
+        except RPCError as exc:
+            show_error(exc)
+            pause()
+            return
+        rows = _admin_matches(all_rows, query, ("userid", "display_name", "roles"))
+        cursor = max(0, min(cursor, len(rows) - 1)) if rows else 0
+        heading("ACCOUNT MANAGEMENT", "Select an account; credentials stay private",
+                f"{len(rows)}/{len(all_rows)}")
+        print(styled(f"{'':2} {'USERID':12} {'STATUS':9} ROLES / DISPLAY NAME", BOLD))
+        start, end = page_window(rows, cursor)
+        for position in range(start, end):
+            row = rows[position]
+            if row.get("deletion_pending"):
+                status = "DELETING"
+            elif row["login_enabled"]:
+                status = "ENABLED"
+            else:
+                status = "DISABLED"
+            suffix = ", ".join(str(value) for value in row["roles"])
+            if row.get("password_change_required"):
+                suffix += " / RESET PENDING"
+            line = (f"{position + 1:2}. {clip(row['userid'], 12):12} {status:9} "
+                    f"{clip(suffix + ' / ' + str(row['display_name']), max(12, width() - 29))}")
+            print(styled(line, REVERSE) if position == cursor else line)
+        if query:
+            print(styled(f"Filter: {safe_text(query)}", DIM))
+        if not rows:
+            print(styled("No accounts match the filter.", DIM))
+        if notice:
+            print("\n" + styled(notice, YELLOW))
+        print("\n[↑/↓] move  [F]ilter  [C]reate  [S]tatus  [P]assword reset  [D]elete")
+        if _can(identity, "account.manage"):
+            print("[I]nactive report   [K]eep/exempt from cleanup")
+        if _can(identity, "account.roles"):
+            print("[R]oles     Assign effective roles")
+        print("[X] Exit")
+        choice = key_input("Accounts> ")
+        if choice in ("x", "q"):
+            return
+        if choice == "j":
+            cursor = min(len(rows) - 1, cursor + 1) if rows else 0
+            continue
+        if choice == "k":
+            cursor = max(0, cursor - 1)
+            continue
+        if choice == "f":
+            query = input("Filter userid, name, or role (blank shows all): ").strip()
+            cursor = 0
+            continue
+        if choice == "c" and _can(identity, "account.manage"):
+            name = input("New userid: ").strip()
+            display = input("Display name: ").strip()
+            first = getpass.getpass("Temporary password (12-64 characters): ")
+            second = getpass.getpass("Retype temporary password: ")
+            if first != second:
+                notice = "Passwords do not match; account not created."
+                continue
+            password_value = getpass.getpass("Your password (reauthorization): ")
+            try:
+                result = call("auth", "admin_create_account", {
+                    "userid": name, "display_name": display,
+                    "new_password": first, "password": password_value})
+                notice = (f"Created {result['userid']} with a temporary password; "
+                          "change required at first login.")
+                query = str(result["userid"])
+                cursor = 0
+            except RPCError as exc:
+                notice = "Request rejected: " + safe_text(exc)
+            continue
+        if choice == "i" and _can(identity, "account.manage"):
+            raw_days = input("Inactive for at least how many days? [90]: ").strip()
+            try:
+                days = int(raw_days or "90")
+                report = call("auth", "admin_inactive", {"days": days})["accounts"]
+                lines = []
+                for item in report:
+                    last = int(item["last_login"] or item["created_at"])
+                    lines.append(f"{item['userid']:12} {mail_datetime(last)}  "
+                                 f"{'enabled' if item['login_enabled'] else 'disabled'}")
+                _text_viewer("INACTIVE ACCOUNTS", f"No login in {days} days; exemptions omitted",
+                             "\n".join(lines) or "No matching accounts.", preserve_columns=True)
+            except (ValueError, RPCError) as exc:
+                notice = "Request rejected: " + safe_text(exc)
+            continue
+        current = _selected(rows, cursor)
+        if current is None:
+            notice = "Select an account first."
+            continue
+        if choice == "k" and _can(identity, "account.manage"):
+            desired = not bool(current.get("cleanup_exempt"))
+            password_value = getpass.getpass("Your password (reauthorization): ")
+            try:
+                result = call("auth", "admin_set_cleanup_exempt", {
+                    "userid": current["userid"], "exempt": desired,
+                    "password": password_value})
+                notice = (f"{result['userid']} is " +
+                          ("exempt from" if desired else "eligible for") +
+                          " inactive-account cleanup.")
+            except RPCError as exc:
+                notice = "Request rejected: " + safe_text(exc)
+        if choice == "s" and _can(identity, "account.manage"):
+            if current.get("deletion_pending"):
+                notice = "That account is pending deletion and cannot be re-enabled."
+                continue
+            desired = not bool(current["login_enabled"])
+            verb = "enable" if desired else "disable"
+            confirm = input(f"Type {verb.upper()} to {verb} {current['userid']}: ").strip()
+            if confirm.upper() != verb.upper():
+                notice = "Account status unchanged."
+                continue
+            password_value = getpass.getpass("Your password (reauthorization): ")
+            try:
+                result = call("auth", "admin_set_login",
+                              {"userid": current["userid"], "enabled": desired,
+                               "password": password_value})
+                ended = 0
+                if not desired:
+                    ended = int(call("session", "admin_end_account",
+                                     {"account_id": int(result["account_id"])}, token)["ended"])
+                notice = f"{current['userid']} is now {verb}d."
+                if ended:
+                    notice += f" {ended} active session(s) ended."
+            except RPCError as exc:
+                notice = "Request rejected: " + safe_text(exc)
+        elif choice == "r" and _can(identity, "account.roles"):
+            definitions = list(call("auth", "admin_roles")["roles"])
+            selected = _admin_role_picker(current["userid"], definitions, current["roles"])
+            if selected is None:
+                notice = "Roles unchanged."
+                continue
+            password_value = getpass.getpass("Your password (reauthorization): ")
+            try:
+                result = call("auth", "admin_set_roles",
+                              {"userid": current["userid"], "roles": selected,
+                               "password": password_value})
+                notice = f"Roles for {result['userid']}: {', '.join(result['roles'])}"
+            except RPCError as exc:
+                notice = "Request rejected: " + safe_text(exc)
+        elif choice == "p" and _can(identity, "account.password_reset"):
+            first = getpass.getpass("Temporary password (12-64 characters): ")
+            second = getpass.getpass("Retype temporary password: ")
+            if first != second:
+                notice = "Passwords do not match; nothing changed."
+                continue
+            password_value = getpass.getpass("Your password (reauthorization): ")
+            try:
+                result = call("auth", "admin_reset_password", {
+                    "userid": current["userid"], "new_password": first,
+                    "password": password_value,
+                })
+                ended = call("session", "admin_end_account",
+                             {"account_id": int(result["account_id"])}, token)["ended"]
+                notice = (f"Temporary password set for {result['userid']}; "
+                          f"{ended} active session(s) ended. Change required at next login.")
+            except RPCError as exc:
+                notice = "Request rejected: " + safe_text(exc)
+        elif choice == "d" and _can(identity, "account.delete"):
+            exact = f"DELETE {current['userid']}"
+            confirm = input(f"Type {exact} to permanently delete this account: ").strip()
+            if confirm != exact:
+                notice = "Account deletion cancelled."
+                continue
+            password_value = getpass.getpass("Your password (reauthorization): ")
+            prepared = False
+            try:
+                target = call("auth", "admin_prepare_delete", {
+                    "userid": current["userid"], "password": password_value,
+                })
+                prepared = True
+                account_id = int(target["account_id"])
+                call("session", "admin_end_account", {"account_id": account_id}, token)
+                call("mail", "admin_delete_account", {"account_id": account_id}, token)
+                call("board", "admin_delete_account", {
+                    "account_id": account_id, "userid": current["userid"]}, token)
+                call("game", "admin_delete_account", {"account_id": account_id}, token)
+                call("auth", "admin_finalize_delete", {
+                    "userid": current["userid"], "password": password_value,
+                })
+                notice = (f"Deleted {current['userid']}: credentials, profile, mailbox, drafts, "
+                          "and read state removed; public posts retained.")
+                cursor = max(0, cursor - 1)
+            except RPCError as exc:
+                prefix = "Deletion paused; account remains disabled. " if prepared else ""
+                notice = prefix + "Request rejected: " + safe_text(exc)
+
+
+def _admin_boards(token: str) -> None:
+    notice = ""
+    query = ""
+    cursor = 0
+    selected_id: int | None = None
+    while True:
+        try:
+            all_rows = list(call("board", "admin_boards", token=token)["boards"])
+        except RPCError as exc:
+            show_error(exc)
+            pause()
+            return
+        rows = _admin_matches(all_rows, query, ("name", "description"))
+        if selected_id is not None:
+            cursor = next((position for position, row in enumerate(rows)
+                           if int(row["id"]) == selected_id), cursor)
+            selected_id = None
+        cursor = max(0, min(cursor, len(rows) - 1)) if rows else 0
+        heading("BOARD MANAGEMENT", "Select a board; archiving preserves posts and read state",
+                f"{len(rows)}/{len(all_rows)}")
+        print(styled(f"{'':2} {'ID':>3} {'BOARD':22} {'POSTS':>5} {'MODE':10} STATUS", BOLD))
+        start, end = page_window(rows, cursor)
+        for position in range(start, end):
+            row = rows[position]
+            mode = "READ ONLY" if row["read_only"] else "READ/WRITE"
+            status = "ARCHIVED" if row["archived"] else "ACTIVE"
+            line = (f"{position + 1:2}. {int(row['id']):3} {clip(row['name'], 22):22} "
+                    f"{int(row['posts']):5} {mode:10} {status}")
+            print(styled(line, REVERSE) if position == cursor else line)
+        if query:
+            print(styled(f"Filter: {safe_text(query)}", DIM))
+        if not rows:
+            print(styled("No boards match the filter.", DIM))
+        if notice:
+            print("\n" + styled(notice, YELLOW))
+        print("\n[↑/↓] move [F]ilter [C]reate [M/Enter] modify [G] managers [X] Exit")
+        choice = key_input("Boards admin> ")
+        if choice in ("x", "q"):
+            return
+        if choice == "j":
+            cursor = min(len(rows) - 1, cursor + 1) if rows else 0
+        elif choice == "k":
+            cursor = max(0, cursor - 1)
+        elif choice == "f":
+            query = input("Filter board name or description (blank shows all): ").strip()
+            cursor = 0
+        elif choice == "c":
+            name = input("Board name: ").strip()
+            description = input("Description: ").strip()
+            read_only = input("Read-only? [y/N]: ").strip().lower() == "y"
+            no_zap = input("Required in every member's New scan? [y/N]: ").strip().lower() == "y"
+            try:
+                result = call("board", "admin_create",
+                              {"name": name, "description": description,
+                               "read_only": read_only, "no_zap": no_zap}, token)
+                notice = f"Created board #{result['id']} ({result['name']})."
+                selected_id = int(result["id"])
+                query = ""
+            except RPCError as exc:
+                notice = "Request rejected: " + safe_text(exc)
+        elif choice in ("m", ""):
+            current = _selected(rows, cursor)
+            if current is None:
+                notice = "Select a board first."
+                continue
+            name = input(f"Name [{current['name']}]: ").strip() or str(current["name"])
+            description = (input(f"Description [{current['description']}]: ").strip()
+                           or str(current["description"]))
+            read_value = input(
+                f"Read-only [{'Y' if current['read_only'] else 'N'}] (Y/N): ").strip().lower()
+            archived_value = input(
+                f"Archived [{'Y' if current['archived'] else 'N'}] (Y/N): ").strip().lower()
+            no_zap_value = input(
+                f"Required in New scan [{'Y' if current.get('no_zap') else 'N'}] (Y/N): ").strip().lower()
+            read_only = bool(current["read_only"]) if not read_value else read_value == "y"
+            archived = bool(current["archived"]) if not archived_value else archived_value == "y"
+            no_zap = bool(current.get("no_zap")) if not no_zap_value else no_zap_value == "y"
+            definitions = list(call("auth", "admin_roles")["roles"])
+            current_read = [part for part in str(current.get("read_roles", "")).split(",")
+                            if part]
+            current_post = [part for part in str(current.get("post_roles", "")).split(",")
+                            if part]
+            if input("Restrict readers by role? [y/N]: ").strip().lower() == "y":
+                picked = _admin_role_picker("board readers", definitions,
+                                            current_read or ["Basic-1"])
+                if picked is None:
+                    notice = "Board settings unchanged."
+                    continue
+                read_roles = ",".join(picked)
+            else:
+                read_roles = ""
+            if input("Restrict posters by role? [y/N]: ").strip().lower() == "y":
+                picked = _admin_role_picker("board posters", definitions,
+                                            current_post or ["Basic-1"])
+                if picked is None:
+                    notice = "Board settings unchanged."
+                    continue
+                post_roles = ",".join(picked)
+            else:
+                post_roles = ""
+            try:
+                call("board", "admin_update",
+                     {"board_id": int(current["id"]), "name": name,
+                      "description": description,
+                      "read_only": read_only, "archived": archived, "no_zap": no_zap,
+                      "read_roles": read_roles, "post_roles": post_roles}, token)
+                notice = f"Updated {name}."
+                selected_id = int(current["id"])
+            except RPCError as exc:
+                notice = "Request rejected: " + safe_text(exc)
+        elif choice == "g":
+            current = _selected(rows, cursor)
+            if current is None:
+                notice = "Select a board first."
+                continue
+            try:
+                existing = call("board", "admin_managers", {
+                    "board_id": int(current["id"])}, token)["managers"]
+                selected = _admin_member_picker(
+                    token, f"MANAGERS - {current['name']}", list(existing))
+                if selected is None:
+                    notice = "Board managers unchanged."
+                else:
+                    call("board", "admin_managers", {
+                        "board_id": int(current["id"]), "managers": selected}, token)
+                    notice = ("Board managers: " + ", ".join(selected)) if selected else \
+                        "Board has no delegated managers."
+            except RPCError as exc:
+                notice = "Request rejected: " + safe_text(exc)
+
+
+def _admin_sessions(token: str) -> None:
+    notice = ""
+    query = ""
+    cursor = 0
+    while True:
+        try:
+            all_rows = list(call("session", "admin_sessions", token=token)["sessions"])
+        except RPCError as exc:
+            show_error(exc)
+            pause()
+            return
+        rows = _admin_matches(
+            all_rows, query, ("userid", "display_name", "session_id", "session_type"))
+        cursor = max(0, min(cursor, len(rows) - 1)) if rows else 0
+        heading("SESSION MANAGEMENT", "Select a live session; current session is protected",
+                f"{len(rows)}/{len(all_rows)}")
+        print(styled(
+            f"{'':2} {'ID':16} {'USERID':12} {'TYPE':8} {'CONNECTED':>10} {'IDLE':>10}",
+            BOLD))
+        start, end = page_window(rows, cursor)
+        for position in range(start, end):
+            row = rows[position]
+            suffix = " *" if row["current"] else ""
+            line = (f"{position + 1:2}. {row['session_id']:16} {clip(row['userid'], 12):12} "
+                    f"{clip(row.get('session_type', 'SSH'), 8):8} "
+                    f"{elapsed(int(row['connected_seconds'])):>10} "
+                    f"{elapsed(int(row['idle_seconds'])):>10}{suffix}")
+            print(styled(line, REVERSE) if position == cursor else line)
+        if query:
+            print(styled(f"Filter: {safe_text(query)}", DIM))
+        if not rows:
+            print(styled("No sessions match the filter.", DIM))
+        if notice:
+            print("\n" + styled(notice, YELLOW))
+        print("\n[↑/↓] move  [F]ilter  [T]erminate selected  [X] Exit   * current session")
+        choice = key_input("Sessions> ")
+        if choice in ("x", "q"):
+            return
+        if choice == "j":
+            cursor = min(len(rows) - 1, cursor + 1) if rows else 0
+        elif choice == "k":
+            cursor = max(0, cursor - 1)
+        elif choice == "t" and rows:
+            current = rows[cursor]
+            session_id = str(current["session_id"])
+            label = safe_text(current.get("session_type", "SSH"))
+            confirm = input(
+                f"Type KICK to terminate {current['userid']} {label} session: ").strip()
+            if confirm != "KICK":
+                notice = "Session unchanged."
+                continue
+            try:
+                result = call("session", "admin_end", {"session_id": session_id}, token)
+                notice = f"Ended the selected {result['userid']} {label} session."
+            except RPCError as exc:
+                notice = "Request rejected: " + safe_text(exc)
+        elif choice == "t":
+            notice = "Select a session first."
+        elif choice == "f":
+            query = input(
+                "Filter userid, type, display name, or session ID (blank shows all): "
+            ).strip()
+            cursor = 0
+
+
+def _admin_audit(token: str) -> None:
+    query = ""
+    cursor = 0
+    while True:
+        try:
+            auth_events = call("auth", "admin_audit")["events"]
+            board_events = call("board", "admin_audit", token=token)["events"]
+            mail_events = call("mail", "admin_mail_audit", token=token)["events"]
+        except RPCError as exc:
+            show_error(exc)
+            pause()
+            return
+        events: list[dict[str, object]] = []
+        for event in auth_events:
+            item = dict(event)
+            item["service"] = "AUTH"
+            events.append(item)
+        for event in board_events:
+            item = dict(event)
+            item["service"] = "BOARD"
+            item.setdefault("result", "success")
+            events.append(item)
+        for event in mail_events:
+            item = dict(event)
+            item["service"] = "MAIL"
+            events.append(item)
+        events.sort(key=lambda event: int(event["created_at"]), reverse=True)
+        rows = _admin_matches(events[:400], query,
+                              ("service", "actor_user", "action", "target", "detail"))
+        cursor = max(0, min(cursor, len(rows) - 1)) if rows else 0
+        heading("ADMINISTRATION AUDIT", "Newest actions; Enter opens full detail",
+                f"{len(rows)}/{min(400, len(events))}")
+        print(styled(f"{'':2} {'WHEN (UTC)':16} {'SVC':5} {'ACTOR':12} ACTION / TARGET", BOLD))
+        start, end = page_window(rows, cursor)
+        for position in range(start, end):
+            event = rows[position]
+            when = datetime.fromtimestamp(int(event["created_at"]), timezone.utc).strftime(
+                "%m-%d %H:%M")
+            summary = f"{event['action']} / {event['target']}"
+            line = (f"{position + 1:2}. {when:16} {event['service']:5} "
+                    f"{clip(event['actor_user'], 12):12} "
+                    f"{clip(summary, max(12, width() - 43))}")
+            print(styled(line, REVERSE) if position == cursor else line)
+        if query:
+            print(styled(f"Filter: {safe_text(query)}", DIM))
+        if not rows:
+            print(styled("No audit events match the filter.", DIM))
+        print("\n[↑/↓] move  [F]ilter  [Enter] details  [X] Exit")
+        choice = key_input("Log> ")
+        if choice in ("x", "q"):
+            return
+        if choice == "j":
+            cursor = min(len(rows) - 1, cursor + 1) if rows else 0
+        elif choice == "k":
+            cursor = max(0, cursor - 1)
+        elif choice == "f":
+            query = input("Filter actor, action, target, or service (blank shows all): ").strip()
+            cursor = 0
+        elif choice == "" and rows:
+            event = rows[cursor]
+            when = datetime.fromtimestamp(int(event["created_at"]), timezone.utc).strftime(
+                "%Y-%m-%d %H:%M:%S UTC")
+            content = (f"Time: {when}\nService: {event['service']}\n"
+                       f"Actor: {event['actor_user']}\nAction: {event['action']}\n"
+                       f"Target: {event['target']}\nResult: {event.get('result', 'success')}\n"
+                       f"Detail: {event.get('detail') or '(none)'}")
+            _text_viewer("AUDIT EVENT", "Recorded administrative action", content)
+
+
+def _admin_health(token: str) -> None:
+    lines = []
+    for service in ("auth", "session", "mail", "board", "file", "music", "chat",
+                    "game", "door", "information", "irc"):
+        try:
+            result = call(service, "health")
+            state = str(result.get("status", "ok")).upper()
+        except (OSError, RPCError):
+            state = "UNAVAILABLE"
+        lines.append(f"{service.upper():12} {state}")
+    lines.extend(("", "Host and container control deliberately remain outside the BBS."))
+    _text_viewer("SYSTEM HEALTH", "Authority reachability from this authenticated session",
+                 "\n".join(lines))
+
+
+def _admin_marsamp_artwork_track(token: str, track: dict[str, object]) -> str:
+    """Review local art and optionally confirm a MusicBrainz release cover."""
+    track_id = int(track["id"])
+    notice = ""
+    while True:
+        try:
+            status = call("music", "admin_artwork_status", {"track_id": track_id}, token,
+                          timeout=12.0)
+        except (OSError, RPCError) as exc:
+            return "Artwork check failed: " + safe_text(exc)
+        source = safe_text(status.get("source", "marsamp"))
+        source_label = {
+            "confirmed": "ADMIN-CONFIRMED WEB COVER",
+            "embedded": "EMBEDDED IN AUDIO FILE",
+            "folder": "ALBUM-FOLDER IMAGE",
+            "marsamp": "MARSAMP FALLBACK",
+        }.get(source, source.upper())
+        heading("MARSAMP COVER ART", "Review and confirm artwork without changing NAS files")
+        print("\nTitle:  " + safe_text(track.get("title", "")))
+        print("Artist: " + safe_text(track.get("artist", "")))
+        print("Album:  " + safe_text(track.get("album", "")))
+        print("Source: " + source_label)
+        print(f"Size:   {int(status.get('bytes', 0)):,} bytes")
+        if notice:
+            print(styled("\n" + notice, YELLOW))
+        print("\n[S] Search MusicBrainz / Cover Art Archive")
+        if status.get("confirmed"):
+            print("[D] Delete confirmed cover and return to local artwork")
+        print("[X] Return to artwork catalog search")
+        choice = key_input("Cover art> ")
+        if choice in ("x", "q"):
+            return notice
+        if choice == "d" and status.get("confirmed"):
+            answer = input("Type REMOVE to delete this album's confirmed cover: ").strip()
+            if answer != "REMOVE":
+                notice = "Confirmed cover unchanged."
+                continue
+            try:
+                call("music", "admin_artwork_remove", {
+                    "track_id": track_id, "confirm": "REMOVE"}, token)
+                notice = "Confirmed cover removed; local embedded or folder art is active."
+            except (OSError, RPCError) as exc:
+                notice = "Removal rejected: " + safe_text(exc)
+            continue
+        if choice != "s":
+            continue
+        default_artist = safe_text(track.get("artist", ""))[:160]
+        default_album = safe_text(track.get("album", ""))[:160]
+        artist = input(f"Artist search [{default_artist}]: ").strip() or default_artist
+        album = input(f"Album search [{default_album}]: ").strip() or default_album
+        if not artist or not album:
+            notice = "Artist and album are required for a reviewed match."
+            continue
+        try:
+            result = call("music", "admin_artwork_search", {
+                "track_id": track_id, "artist": artist, "album": album,
+            }, token, timeout=12.0)
+        except (OSError, RPCError) as exc:
+            notice = "Search failed: " + safe_text(exc)
+            continue
+        candidates = list(result.get("candidates", []))
+        if not candidates:
+            notice = "No MusicBrainz release with confirmed front artwork matched."
+            continue
+        cursor = 0
+        while True:
+            heading("CONFIRM ALBUM COVER",
+                    "Choose the exact release; nothing is imported until confirmation",
+                    f"{len(candidates)} MATCHES")
+            print(styled(f"{'':4}{'RELEASE GROUP':38} {'DATE':10} TYPE", BOLD))
+            for position, candidate in enumerate(candidates):
+                date = safe_text(candidate.get("date", ""))[:10]
+                release_type = safe_text(candidate.get("type", ""))[:12]
+                line = (f" {position + 1:2}. "
+                        f"{clip(candidate.get('title', ''), 38):38} {date:10} {release_type}")
+                print(styled(clip(line, width()), REVERSE) if position == cursor else
+                      clip(line, width()))
+                if position == cursor:
+                    print(styled("     " + clip(candidate.get("artist", ""),
+                                                  max(12, width() - 5)), DIM))
+            print("\n[↑/↓] move  [Enter] review/import  [X] cancel")
+            selected_choice = key_input("Release> ")
+            if selected_choice in ("x", "q"):
+                notice = "Web artwork search cancelled."
+                break
+            if selected_choice in ("j", "k", "[", "]"):
+                cursor = _move_cursor(selected_choice, cursor, candidates)
+                continue
+            if selected_choice != "":
+                continue
+            selected = candidates[cursor]
+            heading("CONFIRM COVER IMPORT", "The 1200px front cover will be cached locally")
+            print("\nLibrary album: " + default_artist + " — " + default_album)
+            print("Web release:   " + safe_text(selected.get("artist", "")) +
+                  " — " + safe_text(selected.get("title", "")))
+            print("Release date:  " + safe_text(selected.get("date", "")))
+            print("Release type:  " + safe_text(selected.get("type", "")))
+            print("MusicBrainz release-group ID: " + safe_text(selected.get("id", "")))
+            answer = input("\nType IMPORT to use this cover for the library album: ").strip()
+            if answer != "IMPORT":
+                notice = "Cover import cancelled."
+                continue
+            try:
+                saved = call("music", "admin_artwork_import", {
+                    "track_id": track_id, "mbid": selected["id"], "confirm": "IMPORT",
+                }, token, timeout=15.0)
+                notice = ("Confirmed cover saved locally (" +
+                          f"{int(saved.get('bytes', 0)):,} bytes).")
+                break
+            except (OSError, RPCError) as exc:
+                notice = "Import failed: " + safe_text(exc)
+
+
+def _admin_marsamp_artwork(token: str) -> None:
+    """Find a library album and manage its confirmed cover artwork."""
+    query = ""
+    notice = ""
+    while True:
+        heading("MARSAMP ARTWORK LIBRARY",
                 "Embedded and folder art are automatic; web covers require confirmation")
         if notice:
             print(styled("\n" + notice, YELLOW))
