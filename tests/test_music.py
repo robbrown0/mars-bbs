@@ -408,7 +408,8 @@ class MusicTests(unittest.TestCase):
         self.assertIn("Connection interrupted. Audio will resume automatically.", page)
         self.assertIn("incomingSerial<serial)return", page)
         self.assertIn("name==='NotAllowedError'", page)
-        self.assertIn("else{retryPlayback(attempt)}", page)
+        self.assertIn("name==='AbortError'", page)
+        self.assertIn("else{recoveryMessage('Reconnecting audio…')", page)
         self.assertIn("function confirmLocalOutput()", page)
         self.assertIn("else confirmLocalOutput()", page)
         disconnect = page.split("function confirmLocalOutput()", 1)[1].split(

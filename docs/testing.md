@@ -456,14 +456,14 @@ Validated on 2026-10-24 for Safari/AirPlay navigation race recovery:
 - temporary AirPlay/Remote Playback disconnect notifications no longer replace
   the active source while the route and next track are being negotiated
 - deployed image is
-  `sha256:f1f413e59d9fd74757e3b97a6e6eea24d2a505103f30079e4fed4a0ce85ccb51`;
+  `sha256:028b401d9eb1e7d805ee0629ad51710f603132b82f2ccb975aa4516381ab6e2f`;
   deployed `musicd.py` SHA-256 is
-  `73f7bb213ab2def5fb7a245cc72f6d8f9dee0f4adeb46008d3ab631630e66456`
+  `e91e714ab903b3c03ef3a6daed5dc42fe6b12815e2a1c8168f2018fe215ef035`
 - production is healthy with zero restarts, database integrity OK and 27,486
   available tracks; non-root, read-only, dropped-capability,
   `no-new-privileges` and loopback-only restrictions remain in place;
   unauthenticated state remains HTTP 401
 - the prior production container is preserved, stopped, as
-  `mars-v2final-music-rollback-pre-airplay-state-race-20261024`
+  `mars-v2final-music-rollback-pre-airplay-state-race-r2-20261024`
 - the consistent pre-deployment database snapshot SHA-256 is
-  `0477511cb485adf8ef67c13b73b66986a8ad13dd9ab33b7f8fca17e95ad68ab4`
+  `ed323c79a593e499fec2d87d4cee4043e1bffb90a1686cd75ebe81e6778ae679`
