@@ -372,3 +372,24 @@ Validated on 2026-10-24 for one-tap playback with an active AirPlay route:
   `mars-v2final-music-rollback-pre-airplay-one-tap-20261024`
 - the consistent pre-deployment database snapshot SHA-256 is
   `3cda36e47c7e8ee9ab9383f9a9e463cc299cd2060da7d641635f2c79d300c427`
+
+Validated on 2026-10-24 for connected AirPlay Output state:
+
+- all 82 tests passed in an isolated, network-disabled, read-only container;
+  the generated player JavaScript passed Node syntax validation
+- Output remains enabled whenever WebKit or the Remote Playback API reports an
+  active route, even if the same browser reports that no additional targets
+  are currently available
+- target availability can disable Output only while no remote route is active;
+  connected styling, label and accessible state remain synchronized
+- deployed image is
+  `sha256:70446cfb49c4ae331462d76e6f4a40b29e1f6ebf0756c55373bebb864ed6a245`;
+  deployed `musicd.py` SHA-256 is
+  `56eb2c761014dca6e59b3052d580395c8767073a6aa16ed2fee02976fffdda73`
+- production is healthy with zero restarts, database integrity OK and 26,178
+  available tracks; non-root, read-only, dropped-capability,
+  `no-new-privileges` and loopback-only restrictions remain in place
+- the prior production container is preserved, stopped, as
+  `mars-v2final-music-rollback-pre-airplay-output-enabled-20261024`
+- the consistent pre-deployment database snapshot SHA-256 is
+  `712bc636fb7f1d55f3002b274a7277e30a3ed0e322ce44a99eac53ef4f961f67`
