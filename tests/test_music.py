@@ -281,6 +281,7 @@ class MusicTests(unittest.TestCase):
     def test_player_attempts_autoplay_and_makes_blocked_action_obvious(self) -> None:
         page = _player_html("/marsamp").decode("utf-8")
         self.assertIn("autoplay playsinline", page)
+        self.assertIn('preload="auto"', page)
         self.assertIn('aria-label="Play">▶ PLAY', page)
         self.assertIn("await audio.play()", page)
         self.assertIn("Your browser blocked automatic audio", page)
@@ -303,7 +304,7 @@ class MusicTests(unittest.TestCase):
         self.assertIn("scheduleMetadataRefresh(key)", page)
         self.assertIn("artist+' · '+album", page)
         self.assertIn("audio.addEventListener('loadedmetadata'", page)
-        self.assertIn("audio.addEventListener('playing',refreshMetadata)", page)
+        self.assertIn("audio.addEventListener('playing',()=>{mediaHealthy();refreshMetadata()})", page)
         self.assertIn("mediaSession.setActionHandler", page)
         self.assertIn("manifest.webmanifest", page)
         self.assertIn("audio.addEventListener('ended'", page)
@@ -352,6 +353,19 @@ class MusicTests(unittest.TestCase):
         self.assertNotIn("Sonos appears here when it supports AirPlay", page)
         self.assertNotIn("Choose a Cast or remote playback device", page)
         self.assertIn("state.output_stream", page)
+        self.assertIn("function resumeOrPlay()", page)
+        self.assertIn("serverAction==='stop')&&currentTrack", page)
+        self.assertIn("navigate('/api/pause','',true)", page)
+        self.assertIn("navigate('/api/stop','',true)", page)
+        self.assertNotIn("Pausing playback…", page)
+        self.assertNotIn("Stopping playback…", page)
+        self.assertNotIn("Resuming playback…", page)
+        self.assertIn("function stallGrace()", page)
+        self.assertIn("function recoverStream()", page)
+        self.assertIn("audio.addEventListener('waiting',mediaStalled)", page)
+        self.assertIn("audio.addEventListener('stalled',mediaStalled)", page)
+        self.assertIn("scheduleRecovery(true)", page)
+        self.assertIn("Connection interrupted. Audio will resume automatically.", page)
 
     def test_spectrum_is_bounded_cached_and_current_track_only(self) -> None:
         tracks = self.music._search("", 0, 10)["tracks"]
@@ -418,6 +432,32 @@ class MusicTests(unittest.TestCase):
         self.assertEqual(second["mode"], "shuffle")
         previous = self.music.previous(IDENTITY["account_id"])
         self.assertEqual(previous["track_id"], first["track_id"])
+
+    def test_stop_retains_shuffle_queue_and_browser_can_resume(self) -> None:
+        rows = self.music._search("", 0, 10)["tracks"]
+        queue = [int(row["id"]) for row in rows]
+        playing = self.music.command(
+            IDENTITY["account_id"], "play", queue[0], queue, "shuffle")
+        before = self.music.queue_view(IDENTITY["account_id"])
+
+        stopped = self.music.command(IDENTITY["account_id"], "stop")
+        after = self.music.queue_view(IDENTITY["account_id"])
+
+        self.assertEqual(stopped["action"], "stop")
+        self.assertEqual(stopped["track_id"], playing["track_id"])
+        self.assertEqual(stopped["track"]["id"], playing["track_id"])
+        self.assertEqual(after["current"]["id"], playing["track_id"])
+        self.assertEqual(after["total"], len(queue))
+        self.assertEqual(
+            [track["id"] for track in after["up_next"]],
+            [track["id"] for track in before["up_next"]])
+
+        resumed = self.music.command(IDENTITY["account_id"], "resume")
+        self.assertEqual(resumed["action"], "play")
+        self.assertTrue(resumed["resume"])
+        self.assertEqual(resumed["track_id"], playing["track_id"])
+        self.assertEqual(self.music.queue_view(IDENTITY["account_id"])["total"],
+                         len(queue))
 
     def test_curated_playlists_resolve_only_available_catalog_tracks(self) -> None:
         with patch("marsv2.musicd.validate", return_value=IDENTITY):

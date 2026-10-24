@@ -111,6 +111,19 @@ Leaving MarsAmp for another BBS area preserves the current search or playlist, h
 
 The browser player also provides **BACK** and **FORWARD** buttons. They use the same queue, shuffle bag, and playback history as the terminal controls, so a listener can change songs from the browser while the SSH session is idle or disconnected. An expandable **QUEUE** panel shows the current song and upcoming order without disclosing storage paths. In full-library shuffle it reports the live catalog size and explains that the next track is drawn when playback advances instead of attempting to render thousands of rows.
 
+**STOP** retains the selected song, playlist, upcoming shuffle order and history.
+The browser's **PLAY** button can therefore start that stopped selection again,
+including after the player page is refreshed. Successful play, pause and stop
+commands stay visually quiet; connection and playback errors remain visible.
+
+The audio element requests the browser's native adaptive buffer for each song.
+When a connection stalls, MarsAmp waits for the browser to recover naturally,
+using a longer grace period on Save-Data and slow links. If playback still
+cannot continue, it reconnects the authenticated byte-range stream at the last
+known position with bounded exponential backoff. Offline/online transitions
+also trigger recovery. This does not download or persist complete recordings
+outside the browser cache, and it does not expose a NAS path or credential.
+
 Twenty built-in playlists are presented with **1980s Essentials** first. Nineteen are curated: the original all-time, classic-rock, 1970s, alternative, country, soul/R&B, songwriter, party, and road-trip collections plus New Wave Neon, Arena Rock Anthems, Alternative Mixtape, Country Roadhouse, Women of Mars, Southern & Roots Rock, Unplugged Sunday, Funk/Disco/Dancefloor, and After Midnight. The expanded 1980s collection contains 148 songs; the nine additional curated lists contain 40–45 each. The current Mars Hotel catalog resolves all 853 curated playlist entries.
 
 The twentieth playlist, **Shuffle Everything**, is dynamic. It draws from every currently available catalog track without copying all filenames or track identifiers into the playlist definition or browser. It always uses shuffle mode, avoids the current and recent selections, and preserves bounded history for **BACK**. The displayed count follows the live catalog after rescans.

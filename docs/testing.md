@@ -301,3 +301,29 @@ Validated on 2026-10-24 for spectrum sensitivity tuning:
   `no-new-privileges` and loopback-only restrictions remain in place
 - the consistent pre-deployment database snapshot SHA-256 is
   `ea3a46c0d98bf1343422b79590334a355753f1e276e7b1a0a4e62f120097c8c2`
+
+Validated on 2026-10-24 for stopped-queue resume and adaptive stream recovery:
+
+- all 82 tests passed in an isolated, network-disabled, read-only container;
+  the generated player JavaScript passed Node syntax validation
+- Stop retains the selected track, complete queue, remaining randomized
+  shuffle bag and history; Play resumes that selection from the browser, and a
+  refreshed stopped player preloads the selected stream without autoplaying it
+- the expanded queue remains populated after Stop, and successful Play, Pause,
+  Stop and Resume commands no longer leave redundant status messages
+- the browser requests native adaptive preloading, detects waiting, stalled,
+  error and offline/online transitions, preserves the last playback position,
+  and retries authenticated range streaming with a bounded exponential backoff
+- Save-Data, 2G and sub-1 Mbps browser hints receive a longer recovery grace
+  period so a slow buffer is not mistaken for a failed stream
+- deployed image is
+  `sha256:d722f9d1d4c634c6379c7af2ccd682afe34d2c63a8f92ee14b018335f274a0fd`;
+  deployed `musicd.py` SHA-256 is
+  `661f4c5c40e50f1373f18ec2f19522a3a7353cbf208d88e9e9065f21f8846bab`
+- production is healthy with zero restarts, database integrity OK and 26,075
+  available tracks; non-root, read-only, dropped-capability,
+  `no-new-privileges` and loopback-only restrictions remain in place
+- the prior production container is preserved, stopped, as
+  `mars-v2final-music-rollback-pre-resume-buffer-20261024`
+- the consistent pre-deployment database snapshot SHA-256 is
+  `ca9a668abe4fb11e0580ae51e7286ccc6bac4fb73927fd60e4914f9819312bb8`
