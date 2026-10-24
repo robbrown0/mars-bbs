@@ -418,6 +418,19 @@ class MusicTests(unittest.TestCase):
         self.assertEqual(queue["total"], 3)
         self.assertNotIn("relative_path", repr(queue))
 
+    def test_queue_view_names_an_exact_curated_playlist(self) -> None:
+        opened = self.music.playlist_tracks("test-favorites", 0, 10)
+        queue = [int(track["id"]) for track in opened["tracks"]]
+        self.music.command(IDENTITY["account_id"], "play", queue[0],
+                           queue, "sequential")
+        view = self.music.queue_view(IDENTITY["account_id"])
+        self.assertEqual(view["label"], "Test Favorites")
+
+        self.music.command(IDENTITY["account_id"], "play", queue[0],
+                           list(reversed(queue)), "sequential")
+        view = self.music.queue_view(IDENTITY["account_id"])
+        self.assertEqual(view["label"], "Current queue")
+
     def test_advance_rpc_uses_shuffle_queue(self) -> None:
         with patch("marsv2.musicd.validate", return_value=IDENTITY), \
                 patch.object(self.music, "browser_active", return_value=True):
