@@ -250,3 +250,28 @@ Validated on 2026-10-24 for the real browser spectrum analyzer:
   `no-new-privileges` and loopback-only restrictions remain in place
 - the consistent pre-deployment database snapshot SHA-256 is
   `88515656ef16bc76b1a8511d47c0451fc7202d944dda1140289149ab842b6136`
+
+Validated on 2026-10-24 for iPad spectrum fallback and browser mute:
+
+- all 81 unit tests passed in an isolated, network-disabled container; the
+  generated player JavaScript passed Node syntax validation
+- Safari/iPhone/iPad and remote-output sessions use an authenticated,
+  current-track-only, 18-band timeline synchronized to the audio element's
+  playback position; supported browsers retain the local Web Audio FFT path
+- fallback generation is limited to one worker, four queued tracks, 30 minutes
+  per recording and a rolling 1,000-track cache; recordings remain read-only
+  and the response contains neither audio nor paths, credentials or tags
+- the browser Mute control is centered beneath Play, with Shuffle beneath Stop
+  and Output beneath Next; mute state is accessible and remembered locally
+- FFmpeg 6.1.2 successfully produced the expected 18-band raw frames in the
+  final image; its Alpine base is digest-pinned and its package manifest is
+  preserved in the runtime image
+- deployed `musicd.py` SHA-256 is
+  `b11d770f7224c2fed34a555a96871f4415c3dc59fffca66dc237eaca076478f4`
+- production is healthy with zero restarts, database integrity OK and 26,075
+  available tracks; the service remains non-root, read-only,
+  capability-free, `no-new-privileges` and bound only to loopback
+- unauthenticated state remains HTTP 401; the previous music container is
+  retained, stopped, as the immediate rollback target
+- the consistent pre-deployment database snapshot SHA-256 is
+  `7aef0abc7209e502bc4be518e3c48e0e7a200af5473b08cec816589137b2a856`

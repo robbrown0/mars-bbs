@@ -13,6 +13,7 @@ Third-party runtime components keep their own notices:
 | libsodium | ISC |
 | python-chess 1.11.2 | GPL-3.0-or-later |
 | TinyTag 2.3.2 | MIT; reads embedded artwork without modifying music files |
+| FFmpeg | LGPL-2.1-or-later / GPL components as packaged by Alpine; performs bounded, read-only spectrum analysis and ships the Alpine package manifest in the image |
 | Stockfish 19 | GPL-3.0; official license, authors and full corresponding source are copied into the built image |
 | ngIRCd | GPL-2.0-or-later |
 | tini | MIT |

@@ -17,9 +17,11 @@ import os
 import re
 import secrets
 import sqlite3
+import subprocess
 import threading
 import time
 import unicodedata
+import zlib
 from collections import OrderedDict
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -48,6 +50,14 @@ ARTWORK_TICKET_WINDOW = 60 * 60
 ARTWORK_TICKET_LIFETIME = 9 * ARTWORK_TICKET_WINDOW
 STREAM_TICKET_WINDOW = 15 * 60
 STREAM_TICKET_LIFETIME = 9 * STREAM_TICKET_WINDOW
+SPECTRUM_BANDS = 18
+SPECTRUM_HEIGHT = 100
+SPECTRUM_RATE = 8
+SPECTRUM_INTERVAL_MS = 1000 // SPECTRUM_RATE
+SPECTRUM_MAX_SECONDS = 30 * 60
+SPECTRUM_RETRY_SECONDS = 10 * 60
+SPECTRUM_MAX_QUEUED = 4
+SPECTRUM_CACHE_TRACKS = 1000
 DEFAULT_ARTWORK_USER_AGENT = (
     "MarsHotelBBS/1.0 (https://github.com/robbrown0/mars-bbs)"
 )
@@ -157,6 +167,15 @@ CREATE TABLE IF NOT EXISTS album_artwork (
   image_sha256 TEXT NOT NULL,
   created_at INTEGER NOT NULL,
   created_by TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS track_spectra (
+  track_id INTEGER PRIMARY KEY REFERENCES tracks(id) ON DELETE CASCADE,
+  file_modified_ns INTEGER NOT NULL,
+  interval_ms INTEGER NOT NULL,
+  bands INTEGER NOT NULL,
+  frames INTEGER NOT NULL,
+  data BLOB NOT NULL,
+  updated_at INTEGER NOT NULL
 );
 """
 
@@ -314,6 +333,9 @@ class Music:
             tuple[int, int], tuple[str, bytes, str]
         ] = OrderedDict()
         self.artwork_cache_bytes = 0
+        self.spectrum_jobs: set[int] = set()
+        self.spectrum_failures: dict[int, float] = {}
+        self.spectrum_worker = threading.Semaphore(1)
         self.artwork_signing_key = secrets.token_bytes(32)
         self.stream_signing_key = secrets.token_bytes(32)
         self.artwork_search_at = 0.0
@@ -978,6 +1000,120 @@ class Music:
         if not os.path.isfile(candidate) or int(stat.st_size) != int(row["size"]):
             raise RPCError("track changed; catalog refresh required")
         return row, candidate
+
+    def _build_spectrum(self, track_id: int) -> None:
+        """Build a compact, path-free frequency timeline for one track."""
+        try:
+            with self.spectrum_worker:
+                row, filename = self._track_file(track_id)
+                modified_ns = int(row["modified_ns"])
+                command = [
+                    "ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin",
+                    "-threads", "1", "-protocol_whitelist", "file,pipe",
+                    "-i", filename, "-t", str(SPECTRUM_MAX_SECONDS), "-vn",
+                    "-filter_complex",
+                    (f"showfreqs=s={SPECTRUM_BANDS}x{SPECTRUM_HEIGHT}:"
+                     f"r={SPECTRUM_RATE}:mode=bar:ascale=sqrt:fscale=log:"
+                     "cmode=combined:colors=white,format=gray"),
+                    "-an", "-f", "rawvideo", "-pix_fmt", "gray", "pipe:1",
+                ]
+                completed = subprocess.run(
+                    command, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE, check=False, timeout=180,
+                )
+                frame_bytes = SPECTRUM_BANDS * SPECTRUM_HEIGHT
+                raw = completed.stdout
+                if (completed.returncode != 0 or not raw
+                        or len(raw) % frame_bytes != 0):
+                    raise RuntimeError("spectrum analysis failed")
+                frames = len(raw) // frame_bytes
+                if frames > SPECTRUM_RATE * SPECTRUM_MAX_SECONDS + 2:
+                    raise RuntimeError("spectrum analysis exceeded its bound")
+                levels = bytearray(frames * SPECTRUM_BANDS)
+                view = memoryview(raw)
+                for frame in range(frames):
+                    start = frame * frame_bytes
+                    for band in range(SPECTRUM_BANDS):
+                        active = 0
+                        for y in range(SPECTRUM_HEIGHT):
+                            value = view[start + y * SPECTRUM_BANDS + band]
+                            if value > 8:
+                                active += 1
+                        levels[frame * SPECTRUM_BANDS + band] = min(
+                            255, active * 255 // SPECTRUM_HEIGHT)
+                compressed = zlib.compress(bytes(levels), 9)
+                with self.lock, self.db:
+                    current = self.db.execute(
+                        "SELECT modified_ns FROM tracks WHERE id=? AND available=1",
+                        (track_id,),
+                    ).fetchone()
+                    if current is None or int(current["modified_ns"]) != modified_ns:
+                        raise RuntimeError("track changed during spectrum analysis")
+                    self.db.execute(
+                        "INSERT INTO track_spectra(track_id,file_modified_ns,interval_ms,"
+                        "bands,frames,data,updated_at) VALUES(?,?,?,?,?,?,?) "
+                        "ON CONFLICT(track_id) DO UPDATE SET "
+                        "file_modified_ns=excluded.file_modified_ns,"
+                        "interval_ms=excluded.interval_ms,bands=excluded.bands,"
+                        "frames=excluded.frames,data=excluded.data,"
+                        "updated_at=excluded.updated_at",
+                        (track_id, modified_ns, SPECTRUM_INTERVAL_MS,
+                         SPECTRUM_BANDS, frames, compressed, int(time.time())),
+                    )
+                    self.db.execute(
+                        "DELETE FROM track_spectra WHERE track_id IN ("
+                        "SELECT track_id FROM track_spectra ORDER BY updated_at DESC "
+                        "LIMIT -1 OFFSET ?)", (SPECTRUM_CACHE_TRACKS,),
+                    )
+                    self.spectrum_failures.pop(track_id, None)
+        except (OSError, RuntimeError, subprocess.SubprocessError, zlib.error):
+            with self.lock:
+                self.spectrum_failures[track_id] = time.monotonic()
+        finally:
+            with self.lock:
+                self.spectrum_jobs.discard(track_id)
+
+    def spectrum(self, account_id: int, track_id: int) -> dict[str, object]:
+        """Return or lazily prepare spectrum frames only for the current song."""
+        with self.lock:
+            playback = self.playback.get(account_id, {})
+            if int(playback.get("track_id", 0)) != track_id:
+                raise RPCError("spectrum is limited to the current song")
+            track = self.db.execute(
+                "SELECT modified_ns FROM tracks WHERE id=? AND available=1",
+                (track_id,),
+            ).fetchone()
+            if track is None:
+                raise RPCError("track unavailable")
+            cached = self.db.execute(
+                "SELECT file_modified_ns,interval_ms,bands,frames,data "
+                "FROM track_spectra WHERE track_id=?", (track_id,),
+            ).fetchone()
+            if cached is not None and int(cached["file_modified_ns"]) == int(
+                    track["modified_ns"]):
+                try:
+                    payload = zlib.decompress(bytes(cached["data"]))
+                except zlib.error:
+                    payload = b""
+                bands = int(cached["bands"])
+                frames = int(cached["frames"])
+                interval = int(cached["interval_ms"])
+                if (bands == SPECTRUM_BANDS and interval == SPECTRUM_INTERVAL_MS
+                        and frames > 0 and len(payload) == bands * frames):
+                    return {"status": "ready", "bands": bands, "frames": frames,
+                            "interval_ms": interval, "data": payload}
+                self.db.execute("DELETE FROM track_spectra WHERE track_id=?", (track_id,))
+            failed_at = self.spectrum_failures.get(track_id, 0.0)
+            if failed_at and time.monotonic() - failed_at < SPECTRUM_RETRY_SECONDS:
+                return {"status": "unavailable"}
+            if (track_id not in self.spectrum_jobs
+                    and len(self.spectrum_jobs) < SPECTRUM_MAX_QUEUED):
+                self.spectrum_jobs.add(track_id)
+                threading.Thread(
+                    target=self._build_spectrum, args=(track_id,),
+                    name=f"music-spectrum-{track_id}", daemon=True,
+                ).start()
+            return {"status": "pending"}
 
     @staticmethod
     def _artwork_key(row: sqlite3.Row | dict[str, object]) -> str:
@@ -1784,9 +1920,9 @@ header{display:flex;align-items:center;justify-content:space-between;padding:18p
 .timeline{padding:0 24px 6px}.time-row{display:flex;align-items:center;gap:12px;color:var(--muted);font-size:.75rem}.time-row output{width:46px}.time-row output:last-child{text-align:right}input[type=range]{width:100%;accent-color:var(--green)}
 .meter{height:36px;display:flex;gap:4px;align-items:end;margin:10px 0}.meter i{flex:1;max-width:18px;background:linear-gradient(var(--green),var(--blue));height:10%;border-radius:3px 3px 0 0;transition:height 80ms linear}
 .controls{display:grid;grid-template-columns:repeat(5,1fr);gap:9px;padding:14px 24px 20px}button{appearance:none;border:1px solid #465b8d;border-radius:13px;background:#171f39;color:var(--white);font:700 .82rem ui-monospace,monospace;padding:13px 8px;min-height:48px;box-shadow:0 5px 14px #0005;touch-action:manipulation}button:active{transform:translateY(1px);background:#223052}button.primary{color:#07120e;background:linear-gradient(135deg,#55f0ad,#2dcf82);border-color:#8dffd0;font-size:1rem}button.danger{color:#ffc7c7}button.attention{animation:pulse 1.2s steps(2,end) infinite}button.connected{color:#07120e;background:linear-gradient(135deg,#55f0ad,#47a9ff);border-color:#b7ffe2}
-@keyframes pulse{50%{box-shadow:0 0 24px #ffc65a;background:var(--amber)}}.status{margin:0 24px 12px;padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:#0b0f20;color:var(--amber);min-height:44px;line-height:1.35}.utility{display:grid;grid-template-columns:repeat(5,1fr);gap:9px;padding:0 24px 14px}.utility-actions{grid-column:4/6;display:grid;grid-template-columns:repeat(2,1fr);gap:9px;align-items:center}.output,.shuffle{position:relative;display:inline-flex;align-items:center;justify-content:center;justify-self:center;gap:7px;min-height:38px;padding:6px 9px;border-color:transparent;border-radius:999px;background:transparent;box-shadow:none;color:var(--muted);font-size:.7rem;letter-spacing:.09em}.output:hover,.output:focus-visible,.shuffle:hover,.shuffle:focus-visible{color:var(--white);border-color:#465b8d;background:#171f39}.output:focus-visible,.shuffle:focus-visible{outline:2px solid var(--blue);outline-offset:2px}.output:disabled,.shuffle:disabled{opacity:.42}.cast-glyph,.shuffle-glyph{width:25px;height:25px;flex:0 0 25px;display:grid;place-items:center;color:var(--blue)}.cast-glyph svg,.shuffle-glyph svg{display:block;width:25px;height:25px;overflow:visible}.shuffle.active{color:var(--green);border-color:#39e69d55;background:#39e69d0d}.shuffle.active .shuffle-glyph{color:var(--green)}.output.connected{color:var(--green);border-color:#39e69d55;background:#39e69d0d}.output.connected .cast-glyph{color:var(--green)}.output.connected::after{content:'';position:absolute;right:5px;top:5px;width:6px;height:6px;border:2px solid #11162a;border-radius:50%;background:var(--green);box-shadow:0 0 8px #39e69dcc}
+@keyframes pulse{50%{box-shadow:0 0 24px #ffc65a;background:var(--amber)}}.status{margin:0 24px 12px;padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:#0b0f20;color:var(--amber);min-height:44px;line-height:1.35}.utility{display:grid;grid-template-columns:repeat(5,1fr);gap:9px;padding:0 24px 14px}.utility-actions{grid-column:3/6;display:grid;grid-template-columns:repeat(3,1fr);gap:9px;align-items:center}.output,.shuffle,.mute{position:relative;display:inline-flex;align-items:center;justify-content:center;justify-self:center;gap:7px;min-height:38px;padding:6px 9px;border-color:transparent;border-radius:999px;background:transparent;box-shadow:none;color:var(--muted);font-size:.7rem;letter-spacing:.09em}.output:hover,.output:focus-visible,.shuffle:hover,.shuffle:focus-visible,.mute:hover,.mute:focus-visible{color:var(--white);border-color:#465b8d;background:#171f39}.output:focus-visible,.shuffle:focus-visible,.mute:focus-visible{outline:2px solid var(--blue);outline-offset:2px}.output:disabled,.shuffle:disabled,.mute:disabled{opacity:.42}.cast-glyph,.shuffle-glyph,.mute-glyph{width:25px;height:25px;flex:0 0 25px;display:grid;place-items:center;color:var(--blue)}.cast-glyph svg,.shuffle-glyph svg,.mute-glyph svg{display:block;width:25px;height:25px;overflow:visible}.shuffle.active{color:var(--green);border-color:#39e69d55;background:#39e69d0d}.shuffle.active .shuffle-glyph{color:var(--green)}.mute.active{color:var(--amber);border-color:#ffc65a55;background:#ffc65a0d}.mute.active .mute-glyph{color:var(--amber)}.mute .mute-slash{display:none}.mute.active .sound-waves{display:none}.mute.active .mute-slash{display:block}.output.connected{color:var(--green);border-color:#39e69d55;background:#39e69d0d}.output.connected .cast-glyph{color:var(--green)}.output.connected::after{content:'';position:absolute;right:5px;top:5px;width:6px;height:6px;border:2px solid #11162a;border-radius:50%;background:var(--green);box-shadow:0 0 8px #39e69dcc}
 details{border-top:1px solid var(--line);background:#0b0f1d}summary{cursor:pointer;list-style:none;padding:17px 22px;color:var(--green);font-weight:800;letter-spacing:.08em}summary::-webkit-details-marker{display:none}summary::after{content:'+';float:right;color:var(--blue);font-size:1.25rem}details[open] summary::after{content:'–'}.queue-meta{padding:0 22px 12px;color:var(--muted);font-size:.8rem}.queue{list-style:none;margin:0;padding:0 14px 18px;max-height:40vh;overflow:auto;overscroll-behavior:contain}.queue li{padding:11px 10px;border-top:1px solid #202945;display:grid;grid-template-columns:32px 1fr;gap:10px}.queue .number{color:var(--blue);text-align:right}.queue strong{display:block;color:var(--white);font:650 .9rem system-ui,sans-serif}.queue span{color:var(--muted);font: .78rem system-ui,sans-serif}.queue .current strong{color:var(--green)}
-@media(max-width:560px){body{padding-left:8px;padding-right:8px}.stage{grid-template-columns:112px 1fr;gap:16px;padding:18px}.controls,.utility{padding-left:14px;padding-right:14px;gap:6px}.utility-actions{gap:6px}.controls button{font-size:.72rem;padding:10px 4px}.timeline{padding-left:16px;padding-right:16px}.status{margin-left:16px;margin-right:16px}.brand{font-size:1rem}.output,.shuffle{padding-left:7px;padding-right:7px}.output-label,.shuffle-label{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}}
+@media(max-width:560px){body{padding-left:8px;padding-right:8px}.stage{grid-template-columns:112px 1fr;gap:16px;padding:18px}.controls,.utility{padding-left:14px;padding-right:14px;gap:6px}.utility-actions{gap:6px}.controls button{font-size:.72rem;padding:10px 4px}.timeline{padding-left:16px;padding-right:16px}.status{margin-left:16px;margin-right:16px}.brand{font-size:1rem}.output,.shuffle,.mute{padding-left:7px;padding-right:7px}.output-label,.shuffle-label,.mute-label{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}}
 @media(max-width:390px){.stage{grid-template-columns:88px 1fr}.title{font-size:1.18rem}}
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style></head><body><main>
@@ -1803,7 +1939,7 @@ details{border-top:1px solid var(--line);background:#0b0f1d}summary{cursor:point
 <button id="stop" class="danger" type="button" aria-label="Stop">■ STOP</button>
 <button id="next" type="button" aria-label="Next track">NEXT ▶</button></section>
 <div id="hint" class="status" role="status">Attempting to start audio automatically.</div>
-<section class="utility" aria-label="Playback options"><div class="utility-actions"><button id="shuffle" class="shuffle" type="button" title="Turn shuffle on" aria-label="Turn shuffle on" aria-pressed="false"><span class="shuffle-glyph" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M4 7h2.2c4.7 0 6.2 10 11 10H20M17 14l3 3-3 3M4 17h2.2c1.8 0 3.1-1.5 4.3-3.4M14 8.8C15 7.7 16 7 17.2 7H20M17 4l3 3-3 3" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span id="shuffle-label" class="shuffle-label">SHUFFLE OFF</span></button>
+<section class="utility" aria-label="Playback options"><div class="utility-actions"><button id="mute" class="mute" type="button" title="Mute audio" aria-label="Mute audio" aria-pressed="false"><span class="mute-glyph" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M4 9h4l5-4v14l-5-4H4z" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linejoin="round"/><g class="sound-waves" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><path d="M16 9c1.5 1.7 1.5 4.3 0 6"/><path d="M18.5 6.5c3 3 3 8 0 11"/></g><path class="mute-slash" d="M16 9l5 6m0-6l-5 6" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/></svg></span><span id="mute-label" class="mute-label">MUTE</span></button><button id="shuffle" class="shuffle" type="button" title="Turn shuffle on" aria-label="Turn shuffle on" aria-pressed="false"><span class="shuffle-glyph" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M4 7h2.2c4.7 0 6.2 10 11 10H20M17 14l3 3-3 3M4 17h2.2c1.8 0 3.1-1.5 4.3-3.4M14 8.8C15 7.7 16 7 17.2 7H20M17 4l3 3-3 3" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span id="shuffle-label" class="shuffle-label">SHUFFLE OFF</span></button>
 <button id="output" class="output" type="button" title="Choose an AirPlay or Cast speaker" aria-label="Choose an AirPlay or Cast speaker"><span id="output-label" class="output-label">OUTPUT</span><span class="cast-glyph" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M4 4h15.5A1.5 1.5 0 0 1 21 5.5v11a1.5 1.5 0 0 1-1.5 1.5H14" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 15.5a4.5 4.5 0 0 1 4.5 4.5M4 11.5a8.5 8.5 0 0 1 8.5 8.5" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/><circle cx="4" cy="20" r="1.35" fill="currentColor"/></svg></span></button></div></section>
 <details id="queue-panel"><summary id="queue-summary">QUEUE · loading</summary><div id="queue-meta" class="queue-meta"></div><ol id="queue" class="queue"></ol></details>
 <audio id="audio" preload="metadata" autoplay playsinline x-webkit-airplay="allow"></audio>
@@ -1818,23 +1954,28 @@ const durationEl=document.getElementById('duration'),queueEl=document.getElement
 const queueSummary=document.getElementById('queue-summary'),queueMeta=document.getElementById('queue-meta');
 const output=document.getElementById('output'),outputLabel=document.getElementById('output-label');
 const shuffle=document.getElementById('shuffle'),shuffleLabel=document.getElementById('shuffle-label');
+const mute=document.getElementById('mute'),muteLabel=document.getElementById('mute-label');
 const coverEl=document.getElementById('cover');coverEl.onerror=()=>{if(coverEl.src!==ART512)coverEl.src=ART512};
 let enabled=false,serial=-1,currentTrack=null,serverAction='stop',currentMode='sequential',modeLocked=false,metadataKey='',mediaArtworkData='',mediaArtworkType='',localStream='',outputStream='',switchingOutput=false;
-let spectrumContext=null,spectrumSource=null,spectrumAnalyser=null,spectrumData=null,spectrumFrame=0,spectrumStarting=false,spectrumUnavailable=false;
+let spectrumContext=null,spectrumSource=null,spectrumAnalyser=null,spectrumData=null,spectrumFrame=0,spectrumStarting=false,spectrumUnavailable=false,cachedSpectrum=null,cachedSpectrumTrack=0,cachedSpectrumTimer=0,cachedSpectrumAttempts=0;
 for(let i=0;i<18;i++)meter.appendChild(document.createElement('i'));
 const text=value=>String(value||'').replace(/[<>]/g,'');
 function clock(value){if(!Number.isFinite(value))return '0:00';let seconds=Math.max(0,Math.floor(value));return Math.floor(seconds/60)+':'+String(seconds%60).padStart(2,'0')}
 function restBars(){[...meter.children].forEach(bar=>bar.style.height='10%')}
 function stopSpectrum(){if(spectrumFrame)cancelAnimationFrame(spectrumFrame);spectrumFrame=0;restBars()}
-function drawSpectrum(){spectrumFrame=0;if(audio.paused||remoteConnected()||!spectrumAnalyser||!spectrumData){stopSpectrum();return}spectrumAnalyser.getByteFrequencyData(spectrumData);const bars=[...meter.children],limit=Math.max(2,Math.floor(spectrumData.length*.45));bars.forEach((bar,index)=>{const low=Math.max(1,Math.floor(Math.pow(index/bars.length,1.7)*limit));const high=Math.max(low+1,Math.floor(Math.pow((index+1)/bars.length,1.7)*limit));let peak=0,total=0;for(let bin=low;bin<Math.min(high,spectrumData.length);bin++){const value=spectrumData[bin];peak=Math.max(peak,value);total+=value}const average=total/Math.max(1,high-low),level=Math.min(255,peak*.68+average*.52);bar.style.height=Math.max(10,Math.round(level/255*100))+'%'});spectrumFrame=requestAnimationFrame(drawSpectrum)}
+function paintSpectrum(levels){[...meter.children].forEach((bar,index)=>bar.style.height=Math.max(10,Math.round((levels[index]||0)/255*100))+'%')}
+function drawSpectrum(){spectrumFrame=0;if(audio.paused){stopSpectrum();return}if(!remoteConnected()&&spectrumAnalyser&&spectrumData){spectrumAnalyser.getByteFrequencyData(spectrumData);const bars=[...meter.children],limit=Math.max(2,Math.floor(spectrumData.length*.45)),levels=new Uint8Array(bars.length);bars.forEach((bar,index)=>{const low=Math.max(1,Math.floor(Math.pow(index/bars.length,1.7)*limit));const high=Math.max(low+1,Math.floor(Math.pow((index+1)/bars.length,1.7)*limit));let peak=0,total=0;for(let bin=low;bin<Math.min(high,spectrumData.length);bin++){const value=spectrumData[bin];peak=Math.max(peak,value);total+=value}const average=total/Math.max(1,high-low);levels[index]=Math.min(255,peak*.68+average*.52)});paintSpectrum(levels)}else if(cachedSpectrum&&currentTrack&&cachedSpectrumTrack===Number(currentTrack.id)){const frame=Math.min(cachedSpectrum.frames-1,Math.max(0,Math.floor(audio.currentTime*1000/cachedSpectrum.interval)));paintSpectrum(cachedSpectrum.data.subarray(frame*cachedSpectrum.bands,(frame+1)*cachedSpectrum.bands))}else{restBars();return}spectrumFrame=requestAnimationFrame(drawSpectrum)}
 async function prepareSpectrum(){if(spectrumAnalyser){try{if(spectrumContext.state==='suspended')await spectrumContext.resume()}catch(error){}return spectrumContext.state==='running'}if(spectrumStarting||spectrumUnavailable||remoteConnected())return false;const capture=audio.captureStream||audio.mozCaptureStream,Context=window.AudioContext||window.webkitAudioContext;if(typeof capture!=='function'||!Context){spectrumUnavailable=true;return false}spectrumStarting=true;try{const stream=capture.call(audio);if(!stream.getAudioTracks().length)throw new Error('no audio capture track');const context=new Context(),source=context.createMediaStreamSource(stream),analyser=context.createAnalyser();analyser.fftSize=512;analyser.minDecibels=-90;analyser.maxDecibels=-18;analyser.smoothingTimeConstant=.72;source.connect(analyser);spectrumContext=context;spectrumSource=source;spectrumAnalyser=analyser;spectrumData=new Uint8Array(analyser.frequencyBinCount);if(context.state==='suspended')await context.resume();return context.state==='running'}catch(error){spectrumUnavailable=true;return false}finally{spectrumStarting=false}}
-function bars(on){if(!on||remoteConnected()){stopSpectrum();return}if(spectrumFrame)return;prepareSpectrum().then(ready=>{if(ready&&!audio.paused&&!remoteConnected()&&!spectrumFrame)spectrumFrame=requestAnimationFrame(drawSpectrum)})}
+function resetCachedSpectrum(trackId=0){if(cachedSpectrumTimer)clearTimeout(cachedSpectrumTimer);cachedSpectrumTimer=0;cachedSpectrum=null;cachedSpectrumTrack=Number(trackId)||0;cachedSpectrumAttempts=0}
+function needsCachedSpectrum(){return spectrumUnavailable||remoteConnected()||typeof(audio.captureStream||audio.mozCaptureStream)!=='function'}
+async function requestCachedSpectrum(track){if(!track||!needsCachedSpectrum())return;const trackId=Number(track.id)||0;if(!trackId)return;if(cachedSpectrumTrack!==trackId)resetCachedSpectrum(trackId);if(cachedSpectrum||cachedSpectrumTimer)return;cachedSpectrumAttempts+=1;try{const response=await fetch(BASE+'/api/spectrum/'+encodeURIComponent(trackId),{cache:'no-store',credentials:'same-origin'});if(response.status===401){sessionEnded();return}if(response.status===202){if(cachedSpectrumAttempts<180)cachedSpectrumTimer=setTimeout(()=>{cachedSpectrumTimer=0;if(currentTrack&&Number(currentTrack.id)===trackId)requestCachedSpectrum(currentTrack)},1000);return}if(response.status===204)return;if(!response.ok)throw new Error('spectrum unavailable');const bands=Number(response.headers.get('X-MarsAmp-Bands')),frames=Number(response.headers.get('X-MarsAmp-Frames')),interval=Number(response.headers.get('X-MarsAmp-Interval-Ms')),data=new Uint8Array(await response.arrayBuffer());if(bands!==18||frames<1||interval<50||data.length!==bands*frames)throw new Error('invalid spectrum');if(!currentTrack||Number(currentTrack.id)!==trackId)return;cachedSpectrum={bands,frames,interval,data};if(!audio.paused&&!spectrumFrame)spectrumFrame=requestAnimationFrame(drawSpectrum)}catch(error){if(cachedSpectrumAttempts<6)cachedSpectrumTimer=setTimeout(()=>{cachedSpectrumTimer=0;if(currentTrack&&Number(currentTrack.id)===trackId)requestCachedSpectrum(currentTrack)},2000)}}
+function bars(on){if(!on){stopSpectrum();return}if(spectrumFrame)return;prepareSpectrum().then(ready=>{if(!ready&&currentTrack)requestCachedSpectrum(currentTrack);if((ready||cachedSpectrum)&&!audio.paused&&!spectrumFrame)spectrumFrame=requestAnimationFrame(drawSpectrum)})}
 function showHint(message){hint.hidden=false;hint.textContent=message}
 function hideHint(){hint.hidden=true;hint.textContent=''}
 function needsTap(){enabled=false;enable.classList.add('attention');showHint('Your browser blocked automatic audio. Tap PLAY once.')}
 function audioReady(){enabled=true;enable.classList.remove('attention');hideHint()}
 async function beginPlayback(){if(!audio.src){showHint('Choose a song in the BBS or queue first.');return}try{await audio.play();audioReady()}catch(error){needsTap()}}
-function sessionEnded(){audio.pause();audio.removeAttribute('src');audio.load();metadataKey='';mediaArtworkData='';mediaArtworkType='';localStream='';outputStream='';titleEl.textContent='Session ended';artistEl.textContent='Pair MarsAmp again from the BBS';albumEl.textContent='';showHint('Playback authorization ended.');bars(false);setMediaState('none')}
+function sessionEnded(){audio.pause();audio.removeAttribute('src');audio.load();metadataKey='';mediaArtworkData='';mediaArtworkType='';localStream='';outputStream='';currentTrack=null;resetCachedSpectrum();titleEl.textContent='Session ended';artistEl.textContent='Pair MarsAmp again from the BBS';albumEl.textContent='';showHint('Playback authorization ended.');bars(false);setMediaState('none')}
 function setMediaState(value){if('mediaSession' in navigator){try{navigator.mediaSession.playbackState=value}catch(error){}}}
 function remoteConnected(){return Boolean(audio.webkitCurrentPlaybackTargetIsWireless||(audio.remote&&audio.remote.state!=='disconnected'))}
 function absolute(source){return source?new URL(source,location.origin).href:''}
@@ -1842,12 +1983,13 @@ function sameSource(source){return Boolean(source)&&audio.src===absolute(source)
 function replaceSource(source,position,wasPlaying){if(!source||sameSource(source))return;switchingOutput=true;audio.src=source;const restore=()=>{if(Number.isFinite(position)&&position>0&&Number.isFinite(audio.duration))audio.currentTime=Math.min(position,Math.max(0,audio.duration-.25));if(wasPlaying)beginPlayback();switchingOutput=false};audio.addEventListener('loadedmetadata',restore,{once:true});audio.load()}
 function showOutputState(){const connected=remoteConnected();output.classList.toggle('connected',connected);outputLabel.textContent=connected?'CONNECTED':'OUTPUT';output.title=connected?'Remote speaker connected':'Choose an AirPlay or Cast speaker';output.setAttribute('aria-label',output.title)}
 function showModeState(state){currentMode=String(state.mode||'sequential');modeLocked=Boolean(state.scope);const active=currentMode==='shuffle';shuffle.classList.toggle('active',active);shuffle.setAttribute('aria-pressed',String(active));shuffleLabel.textContent=active?'SHUFFLE ON':'SHUFFLE OFF';shuffle.title=modeLocked?'Full-library playback always shuffles':active?'Turn shuffle off':'Turn shuffle on';shuffle.setAttribute('aria-label',shuffle.title)}
+function showMuteState(){const active=audio.muted;mute.classList.toggle('active',active);mute.setAttribute('aria-pressed',String(active));muteLabel.textContent=active?'UNMUTE':'MUTE';mute.title=active?'Unmute audio':'Mute audio';mute.setAttribute('aria-label',mute.title)}
 function selectOutput(){if(!currentTrack||!outputStream){showHint('Choose a song before selecting a speaker.');return}const position=audio.currentTime,wasPlaying=!audio.paused;replaceSource(outputStream,position,wasPlaying);try{if(typeof audio.webkitShowPlaybackTargetPicker==='function'){hideHint();audio.webkitShowPlaybackTargetPicker();return}if(audio.remote&&typeof audio.remote.prompt==='function'){hideHint();audio.remote.prompt().then(showOutputState).catch(error=>{showOutputState();if(error&&error.name!=='NotAllowedError')showHint('No compatible Cast or remote speaker was found.')});return}}catch(error){}showHint('This browser has no webpage speaker picker. Use its system AirPlay or Cast menu.')}
 function publishMetadata(track,artwork=ART512,type='image/png'){if(!track||!('mediaSession' in navigator)||!window.MediaMetadata)return;const image={src:artwork};if(type)image.type=type;if(artwork.startsWith('data:'))image.sizes='any';const artist=text(track.artist)||'The Mars Hotel',album=text(track.album)||'MarsAmp',byline=album&&album!==artist?artist+' · '+album:artist;try{navigator.mediaSession.metadata=new MediaMetadata({title:text(track.title)||'Untitled',artist:byline,album:album,artwork:[image]})}catch(error){}}
 function asDataURL(blob){return new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result||''));reader.onerror=()=>reject(reader.error);reader.readAsDataURL(blob)})}
 function refreshMetadata(){if(currentTrack)publishMetadata(currentTrack,mediaArtworkData||ART512,mediaArtworkType||'image/png')}
 function scheduleMetadataRefresh(key){for(const delay of [150,750,1750])setTimeout(()=>{if(key===metadataKey)refreshMetadata()},delay)}
-async function updateMetadata(track,force=false){if(!track)return;currentTrack=track;const key=String(track.id)+':'+String(track.artwork_url||track.artwork_version||'');const legacy=BASE+'/api/artwork/'+encodeURIComponent(track.id)+'?v='+encodeURIComponent(track.artwork_version||'1');const cover=new URL(track.artwork_url||legacy,location.origin).href;const changed=key!==metadataKey;if(!changed&&!force)return;if(changed){metadataKey=key;mediaArtworkData='';mediaArtworkType='';document.title=(text(track.title)||'Untitled')+' • MarsAmp';coverEl.src=cover}refreshMetadata();scheduleMetadataRefresh(key);if(!changed)return;
+async function updateMetadata(track,force=false){if(!track)return;const priorTrackId=currentTrack?Number(currentTrack.id):0;currentTrack=track;if(priorTrackId!==Number(track.id))resetCachedSpectrum(track.id);requestCachedSpectrum(track);const key=String(track.id)+':'+String(track.artwork_url||track.artwork_version||'');const legacy=BASE+'/api/artwork/'+encodeURIComponent(track.id)+'?v='+encodeURIComponent(track.artwork_version||'1');const cover=new URL(track.artwork_url||legacy,location.origin).href;const changed=key!==metadataKey;if(!changed&&!force)return;if(changed){metadataKey=key;mediaArtworkData='';mediaArtworkType='';document.title=(text(track.title)||'Untitled')+' • MarsAmp';coverEl.src=cover}refreshMetadata();scheduleMetadataRefresh(key);if(!changed)return;
 try{const response=await fetch(cover,{cache:'force-cache',credentials:'omit'});if(!response.ok)throw new Error('artwork unavailable');const blob=await response.blob();const data=await asDataURL(blob);if(key!==metadataKey||!data.startsWith('data:image/'))return;mediaArtworkData=data;mediaArtworkType=blob.type||'';publishMetadata(track,mediaArtworkData,mediaArtworkType)}catch(error){if(key===metadataKey)publishMetadata(track,ART512,'image/png')}}
 function updatePosition(){elapsed.value=clock(audio.currentTime);durationEl.value=clock(audio.duration);seek.value=Number.isFinite(audio.duration)&&audio.duration>0?Math.round(audio.currentTime/audio.duration*1000):0;
 if('mediaSession' in navigator&&Number.isFinite(audio.duration)&&audio.duration>0){try{navigator.mediaSession.setPositionState({duration:audio.duration,playbackRate:audio.playbackRate,position:Math.min(audio.currentTime,audio.duration)})}catch(error){}}}
@@ -1862,14 +2004,16 @@ async function poll(){try{const response=await fetch(BASE+'/api/state',{cache:'n
 enable.onclick=()=>serverAction==='pause'?navigate('/api/resume','Resuming playback…'):beginPlayback();document.getElementById('pause').onclick=()=>navigate('/api/pause','Pausing playback…');document.getElementById('stop').onclick=()=>navigate('/api/stop','Stopping playback…');
 document.getElementById('previous').onclick=()=>navigate('/api/previous','Loading the previous song…');document.getElementById('next').onclick=()=>navigate('/api/advance','Loading the next song…');
 shuffle.onclick=async()=>{if(modeLocked){showHint('Full-library playback always shuffles.');return}const next=currentMode==='shuffle'?'sequential':'shuffle';const state=await navigate('/api/mode/'+next,'',true);if(state)await loadQueue()};
+mute.onclick=()=>{audio.muted=!audio.muted;try{localStorage.setItem('marsamp-muted',audio.muted?'1':'0')}catch(error){}showMuteState()};
 output.onclick=selectOutput;
 seek.addEventListener('input',()=>{if(Number.isFinite(audio.duration))audio.currentTime=audio.duration*Number(seek.value)/1000});
-audio.addEventListener('timeupdate',updatePosition);audio.addEventListener('durationchange',updatePosition);audio.addEventListener('loadedmetadata',refreshMetadata);audio.addEventListener('canplay',refreshMetadata);audio.addEventListener('playing',refreshMetadata);audio.addEventListener('play',()=>{refreshMetadata();enable.textContent='▶ PLAYING';bars(true);setMediaState('playing')});audio.addEventListener('pause',()=>{enable.textContent='▶ PLAY';bars(false);setMediaState('paused')});
+audio.addEventListener('timeupdate',updatePosition);audio.addEventListener('durationchange',updatePosition);audio.addEventListener('loadedmetadata',refreshMetadata);audio.addEventListener('canplay',refreshMetadata);audio.addEventListener('playing',refreshMetadata);audio.addEventListener('volumechange',showMuteState);audio.addEventListener('play',()=>{refreshMetadata();enable.textContent='▶ PLAYING';bars(true);setMediaState('playing')});audio.addEventListener('pause',()=>{enable.textContent='▶ PLAY';bars(false);setMediaState('paused')});
 audio.addEventListener('ended',()=>navigate('/api/advance','Loading the next song…'));document.getElementById('queue-panel').addEventListener('toggle',event=>{if(event.target.open)loadQueue()});
 audio.addEventListener('webkitplaybacktargetavailabilitychanged',event=>{output.disabled=event.availability==='not-available'&&!audio.remote;output.title=event.availability==='available'?'Choose an available AirPlay speaker':'No AirPlay speaker is currently visible';output.setAttribute('aria-label',output.title)});
-audio.addEventListener('webkitcurrentplaybacktargetiswirelesschanged',()=>{showOutputState();if(!remoteConnected()&&!switchingOutput&&localStream)replaceSource(localStream,audio.currentTime,!audio.paused)});
-if(audio.remote&&typeof audio.remote.watchAvailability==='function'){audio.remote.onconnecting=showOutputState;audio.remote.onconnect=showOutputState;audio.remote.ondisconnect=()=>{showOutputState();if(!switchingOutput&&localStream)replaceSource(localStream,audio.currentTime,!audio.paused)};audio.remote.watchAvailability(available=>{output.disabled=!available;output.title=available?'Choose an available remote speaker':'No compatible remote speaker is currently visible';output.setAttribute('aria-label',output.title)}).catch(()=>{output.disabled=false})}
+audio.addEventListener('webkitcurrentplaybacktargetiswirelesschanged',()=>{showOutputState();if(remoteConnected()&&currentTrack)requestCachedSpectrum(currentTrack);else if(!switchingOutput&&localStream)replaceSource(localStream,audio.currentTime,!audio.paused);bars(!audio.paused)});
+if(audio.remote&&typeof audio.remote.watchAvailability==='function'){audio.remote.onconnecting=showOutputState;audio.remote.onconnect=()=>{showOutputState();if(currentTrack)requestCachedSpectrum(currentTrack);bars(!audio.paused)};audio.remote.ondisconnect=()=>{showOutputState();if(!switchingOutput&&localStream)replaceSource(localStream,audio.currentTime,!audio.paused);bars(!audio.paused)};audio.remote.watchAvailability(available=>{output.disabled=!available;output.title=available?'Choose an available remote speaker':'No compatible remote speaker is currently visible';output.setAttribute('aria-label',output.title)}).catch(()=>{output.disabled=false})}
 if('mediaSession' in navigator){const action=(name,handler)=>{try{navigator.mediaSession.setActionHandler(name,handler)}catch(error){}};action('play',()=>serverAction==='pause'?navigate('/api/resume','Resuming playback…'):beginPlayback());action('pause',()=>navigate('/api/pause','Pausing playback…'));action('stop',()=>navigate('/api/stop','Stopping playback…'));action('previoustrack',()=>navigate('/api/previous','Loading the previous song…'));action('nexttrack',()=>navigate('/api/advance','Loading the next song…'));action('seekbackward',details=>{audio.currentTime=Math.max(0,audio.currentTime-(details.seekOffset||10))});action('seekforward',details=>{audio.currentTime=Math.min(audio.duration||audio.currentTime,audio.currentTime+(details.seekOffset||10))});action('seekto',details=>{if(details.seekTime!=null)audio.currentTime=details.seekTime})}
+try{audio.muted=localStorage.getItem('marsamp-muted')==='1'}catch(error){}showMuteState();
 poll();
 </script></body></html>"""
     return page.replace("__BASE__", json.dumps(base_path)).encode("utf-8")
@@ -2005,6 +2149,13 @@ class MusicHTTP(BaseHTTPRequestHandler):
             if path == "/api/queue":
                 self._json(self.music.queue_view(int(ident["account_id"])))
                 return
+            spectrum = re.fullmatch(r"/api/spectrum/([1-9][0-9]{0,9})", path)
+            if spectrum:
+                self._spectrum(
+                    int(ident["account_id"]),
+                    integer(int(spectrum.group(1)), "track id"),
+                )
+                return
             artwork = re.fullmatch(r"/api/artwork/([1-9][0-9]{0,9})", path)
             if artwork:
                 self._track_artwork(integer(int(artwork.group(1)), "track id"), head=False)
@@ -2017,6 +2168,23 @@ class MusicHTTP(BaseHTTPRequestHandler):
             self._json({"error": str(exc)}, 401)
             return
         self._headers(404, "text/plain; charset=utf-8")
+
+    def _spectrum(self, account_id: int, track_id: int) -> None:
+        result = self.music.spectrum(account_id, track_id)
+        status = str(result["status"])
+        if status == "pending":
+            self._json({"status": status}, 202)
+            return
+        if status != "ready":
+            self._headers(204, "application/octet-stream")
+            return
+        payload = bytes(result["data"])
+        self._headers(200, "application/octet-stream", len(payload), extra={
+            "X-MarsAmp-Bands": str(result["bands"]),
+            "X-MarsAmp-Frames": str(result["frames"]),
+            "X-MarsAmp-Interval-Ms": str(result["interval_ms"]),
+        }, cache_control="private, max-age=3600")
+        self.wfile.write(payload)
 
     def do_HEAD(self) -> None:  # noqa: N802 - stdlib handler contract
         path = self._path()

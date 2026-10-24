@@ -312,8 +312,14 @@ class MusicTests(unittest.TestCase):
         self.assertIn('id="output-label"', page)
         self.assertIn('class="utility"', page)
         self.assertIn('.utility{display:grid;grid-template-columns:repeat(5,1fr)', page)
-        self.assertIn('.utility-actions{grid-column:4/6', page)
+        self.assertIn('.utility-actions{grid-column:3/6', page)
         self.assertIn('>OUTPUT</span>', page)
+        self.assertIn('id="mute"', page)
+        self.assertIn('class="mute-glyph"', page)
+        self.assertIn('>MUTE</span>', page)
+        self.assertIn("audio.muted=!audio.muted", page)
+        self.assertIn("localStorage.setItem('marsamp-muted'", page)
+        self.assertIn("audio.addEventListener('volumechange',showMuteState)", page)
         self.assertIn('id="shuffle"', page)
         self.assertIn('class="shuffle-glyph"', page)
         self.assertIn('/api/mode/', page)
@@ -325,6 +331,9 @@ class MusicTests(unittest.TestCase):
         self.assertIn("context.createAnalyser()", page)
         self.assertIn("getByteFrequencyData(spectrumData)", page)
         self.assertIn("requestAnimationFrame(drawSpectrum)", page)
+        self.assertIn("/api/spectrum/", page)
+        self.assertIn("X-MarsAmp-Interval-Ms", page)
+        self.assertIn("audio.currentTime*1000/cachedSpectrum.interval", page)
         self.assertNotIn("Date.now()/145", page)
         self.assertNotIn('Shuffle is on. The current cycle will not repeat songs.', page)
         self.assertNotIn('Sequential play is on.', page)
@@ -341,6 +350,38 @@ class MusicTests(unittest.TestCase):
         self.assertNotIn("Sonos appears here when it supports AirPlay", page)
         self.assertNotIn("Choose a Cast or remote playback device", page)
         self.assertIn("state.output_stream", page)
+
+    def test_spectrum_is_bounded_cached_and_current_track_only(self) -> None:
+        tracks = self.music._search("", 0, 10)["tracks"]
+        track_id = int(tracks[0]["id"])
+        other_id = int(tracks[1]["id"])
+        self.music.command(IDENTITY["account_id"], "play", track_id)
+        bands, height, frames = 18, 100, 2
+        raw = bytearray(bands * height * frames)
+        for frame in range(frames):
+            for band in range(bands):
+                active = min(height, 4 + frame * 8 + band)
+                for row in range(height - active, height):
+                    raw[frame * bands * height + row * bands + band] = 255
+        completed = SimpleNamespace(returncode=0, stdout=bytes(raw), stderr=b"")
+        with patch("marsv2.musicd.subprocess.run", return_value=completed) as run:
+            self.music._build_spectrum(track_id)
+        command = run.call_args.args[0]
+        self.assertEqual(command[0], "ffmpeg")
+        self.assertIn("-protocol_whitelist", command)
+        self.assertIn("file,pipe", command)
+        self.assertIn("1800", command)
+        self.assertNotIn("shell", run.call_args.kwargs)
+        result = self.music.spectrum(IDENTITY["account_id"], track_id)
+        self.assertEqual(result["status"], "ready")
+        self.assertEqual(result["bands"], bands)
+        self.assertEqual(result["frames"], frames)
+        self.assertEqual(result["interval_ms"], 125)
+        self.assertEqual(len(result["data"]), bands * frames)
+        self.assertGreater(max(result["data"]), min(result["data"]))
+        self.assertNotIn(self.temporary.name, repr(result))
+        with self.assertRaisesRegex(RPCError, "current song"):
+            self.music.spectrum(IDENTITY["account_id"], other_id)
 
     def test_playback_list_advances_and_wraps(self) -> None:
         with patch("marsv2.musicd.validate", return_value=IDENTITY):
