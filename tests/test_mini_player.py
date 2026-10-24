@@ -123,6 +123,30 @@ class MiniPlayerTests(unittest.TestCase):
             ui._marsamp_view.clear()
             ui._marsamp_view.update(saved_view)
 
+    def test_playlist_picker_accepts_zero_padded_and_two_digit_numbers(self):
+        playlists = [
+            {"slug": f"list-{number}", "name": f"List {number}", "tracks": number}
+            for number in range(1, 21)
+        ]
+
+        def rpc(service, op, *args, **kwargs):
+            self.assertEqual(service, "music")
+            if op == "playlists":
+                return {"playlists": playlists}
+            if op == "status":
+                return {"action": "stop"}
+            raise AssertionError(op)
+
+        for keys, expected in ((["0", "1"], "list-1"), (["1", "5"], "list-15")):
+            with self.subTest(keys=keys), patch.object(ui, "call", side_effect=rpc), \
+                    patch.object(ui, "key_input", side_effect=keys), \
+                    patch.object(ui, "heading"), \
+                    contextlib.redirect_stdout(io.StringIO()) as output:
+                selected = ui._marsamp_choose_playlist("fixture")
+            self.assertEqual(selected["slug"], expected)
+            self.assertIn("01. List 1", output.getvalue())
+            self.assertIn("[01-20] open", output.getvalue())
+
     def test_direct_controls_through_real_raw_terminal(self):
         import pexpect
         script = r'''

@@ -5483,10 +5483,13 @@ def _marsamp_choose_playlist(token: str) -> dict[str, object] | None:
     if not playlists:
         return {"all": True}
     cursor = 0
+    number_width = max(2, len(str(len(playlists))))
+    number_buffer = ""
     while True:
         heading("MARSAMP PLAYLISTS", "Curated from highly rated songs available on the NAS")
         for position, playlist in enumerate(playlists):
-            label = (f"{position + 1:2}. {safe_text(playlist.get('name', 'Playlist'))} "
+            label = (f"{position + 1:0{number_width}d}. "
+                     f"{safe_text(playlist.get('name', 'Playlist'))} "
                      f"({int(playlist.get('tracks', 0))} songs)")
             rendered = clip(label, width())
             print(styled(rendered, REVERSE) if position == cursor else rendered)
@@ -5497,10 +5500,40 @@ def _marsamp_choose_playlist(token: str) -> dict[str, object] | None:
         if isinstance(track, dict):
             print(clip("Last / current: " + str(track.get("artist", "")) + " - " +
                        str(track.get("title", "")), width()))
-        print(styled("\n[Enter] open  [T] all music  [P] play/pause  [X/Esc] return", DIM))
-        choice = key_input("Playlists> ", escape_command="x")
+        number_help = (f"[01-{len(playlists):0{number_width}d}] open  "
+                       "[Enter] selected  [T] all music  [P] play/pause  "
+                       "[X/Esc] return")
+        print(styled("\n" + number_help, DIM))
+        prompt = (f"Playlists [{number_buffer}{'_' * (number_width - len(number_buffer))}]> "
+                  if number_buffer else "Playlists> ")
+        choice = key_input(prompt, escape_command="x")
         if choice in ("x", "q"):
             return None
+        if choice.isascii() and choice.isdigit() and len(choice) <= number_width:
+            number_buffer = (number_buffer + choice)[-number_width:]
+            numbered = int(number_buffer)
+            longer_match = any(
+                f"{position:0{number_width}d}".startswith(number_buffer)
+                for position in range(1, len(playlists) + 1)
+            )
+            if len(number_buffer) == number_width or not longer_match:
+                number_buffer = ""
+                if 1 <= numbered <= len(playlists):
+                    cursor = numbered - 1
+                    selected = playlists[cursor]
+                    if int(selected.get("tracks", 0)):
+                        return selected
+            continue
+        if choice == "" and number_buffer:
+            numbered = int(number_buffer)
+            number_buffer = ""
+            if 1 <= numbered <= len(playlists):
+                cursor = numbered - 1
+                selected = playlists[cursor]
+                if int(selected.get("tracks", 0)):
+                    return selected
+            continue
+        number_buffer = ""
         if choice == "t":
             return {"all": True}
         if choice == "p":
