@@ -1418,6 +1418,27 @@ class Music:
         by_id = {int(row["id"]): _public_row(row) for row in rows}
         return [by_id[track_id] for track_id in track_ids if track_id in by_id]
 
+    def _queue_label(self, queue: list[int]) -> str:
+        """Name an exact curated-playlist queue without trusting client labels."""
+        if not queue:
+            return "Current queue"
+        rows = self.db.execute(
+            "SELECT p.slug,p.name,pt.track_id FROM playlists p "
+            "JOIN playlist_tracks pt ON pt.playlist_slug=p.slug "
+            "JOIN tracks t ON t.id=pt.track_id "
+            "WHERE t.available=1 ORDER BY p.position,pt.position"
+        ).fetchall()
+        names: dict[str, str] = {}
+        tracks: dict[str, list[int]] = {}
+        for row in rows:
+            slug = str(row["slug"])
+            names.setdefault(slug, str(row["name"]))
+            tracks.setdefault(slug, []).append(int(row["track_id"]))
+        for slug, track_ids in tracks.items():
+            if track_ids == queue:
+                return names[slug]
+        return "Current queue"
+
     def queue_view(self, account_id: int) -> dict[str, object]:
         """Return a path-free browser view of the current playback order."""
         with self.lock:
@@ -1454,7 +1475,7 @@ class Music:
             else:
                 upcoming = queue
             return {
-                "dynamic": "", "label": "Current queue", "mode": mode,
+                "dynamic": "", "label": self._queue_label(queue), "mode": mode,
                 "total": len(queue),
                 "current": current_track,
                 "recent": list(reversed(self._queue_tracks(history[-12:]))),
