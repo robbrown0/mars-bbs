@@ -231,3 +231,22 @@ Validated on 2026-10-24 for aligned browser-player options:
 - database integrity remained OK with 26,075 tracks; the consistent
   pre-deployment snapshot SHA-256 is
   `6520d938fece429705040e9ae7bcb831effa6a724cf9bb08590ecead4cd6bdb1`
+
+Validated on 2026-10-24 for the real browser spectrum analyzer:
+
+- all 80 unit tests passed in an isolated, network-disabled container and the
+  generated player JavaScript passed Node syntax validation
+- supported browsers capture the playing media element without changing its
+  output route, calculate a 512-point FFT and render 18 smoothed frequency
+  bands with `AnalyserNode.getByteFrequencyData()`
+- the former clock-driven decorative movement is absent; browsers without
+  media-element capture display a stationary resting meter
+- Safari/WebKit and remote AirPlay/Cast playback deliberately avoid Web Audio
+  rerouting so background, lock-screen and native output behavior remain intact
+- deployed `musicd.py` SHA-256 is
+  `862b095ed5fc938726892b7db1877494109863b8d9151994d30a1bbdc04d8d7b`
+- production remained healthy with zero restarts, database integrity OK and
+  26,075 tracks; non-root, read-only, dropped-capability,
+  `no-new-privileges` and loopback-only restrictions remain in place
+- the consistent pre-deployment database snapshot SHA-256 is
+  `88515656ef16bc76b1a8511d47c0451fc7202d944dda1140289149ab842b6136`
