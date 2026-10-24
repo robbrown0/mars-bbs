@@ -159,3 +159,29 @@ returns HTTP 401. The replacement runs non-root with a read-only root,
 `no-new-privileges`, all capabilities dropped, loopback-only HTTP and zero
 restarts. The consistent pre-deployment database snapshot SHA-256 is
 `ef88a21711de50bb5f65a689abb08894cab09a391e89104d59ba24cc1fe1541a`.
+
+Validated on 2026-10-24 for numbered playlists and browser-player refinement:
+
+- all 79 unit tests and all 14 recovered model suites passed in isolated,
+  network-disabled containers; the generated browser JavaScript passed Node
+  syntax validation
+- the terminal playlist picker accepts zero-padded selections such as `01`
+  and `15`, while retaining arrows, Enter and existing transport keys
+- the authenticated browser player can switch playlist playback between
+  sequential and no-repeat shuffle without restarting the current track;
+  full-library playback remains shuffle-only
+- the redundant play-mode text, persistent ready notice and instructional
+  footer are absent; the accessible shuffle and output controls remain, and
+  autoplay failures, progress, authorization expiry and errors still surface
+- deployed source SHA-256
+  `bfb8f39a1042fa582771e1b6cc2cc6b6e9a4ea7ace4b21207464d1962ee4c7c7`
+  matched the tested source
+- production remained healthy with zero restarts, database integrity OK,
+  26,075 tracks and 853 curated entries; the service remains non-root,
+  read-only, capability-free, `no-new-privileges` and loopback-only
+- the public manifest returned HTTP 200 and unauthenticated state and
+  shuffle requests returned HTTP 401
+- the gateway remained running with its original SSH host-key fingerprint
+  `SHA256:f46r4okVd7RLfofExvWW5XsM0od7ra4s0eVq6sPon0w`
+- the consistent pre-deployment database snapshot SHA-256 is
+  `f3cfd67c663f1dc151fc652aab045cee3be8963aa92acd7749f9273d05c03cee`
