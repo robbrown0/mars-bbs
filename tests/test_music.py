@@ -316,6 +316,8 @@ class MusicTests(unittest.TestCase):
         self.assertIn('class="shuffle-glyph"', page)
         self.assertIn('/api/mode/', page)
         self.assertIn("shuffle.setAttribute('aria-pressed'", page)
+        self.assertNotIn('id="mode"', page)
+        self.assertNotIn('PLAY MODE:', page)
         self.assertNotIn('class="output-copy"', page)
         self.assertNotIn('PLAY ON ANOTHER SPEAKER', page)
         self.assertNotIn('Keep this page open while controlling MarsAmp', page)
