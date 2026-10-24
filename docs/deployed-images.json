@@ -74,8 +74,8 @@
   {
     "service": "music",
     "container": "mars-v2final-music",
-    "image": "sha256:9e359bc226b9fe2629fee7b4d6cf3574633697d063814d17aaf6113dd9c1cf17",
-    "tag": "mars-hotel-v2-service:real-spectrum-20261024",
+    "image": "sha256:4da8729cde0888a9b64221b0946575256bd186a7d86c1572b721bf707f080e55",
+    "tag": "mars-hotel-v2-service:ipad-spectrum-mute-20261024",
     "user": "21012:21012",
     "running": true,
     "read_only": true

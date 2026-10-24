@@ -10,8 +10,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
     && install -D -m 0444 /tmp/stockfish/AUTHORS /out/doc/AUTHORS \
     && cp -a /tmp/stockfish/src /out/source
 
+FROM alpine@sha256:2e0b81d60597f449baa56dc25d355367869d2dca4cd57e866f1e2b52af3eb55f AS spectrum
+RUN apk add --no-cache ffmpeg
+
 FROM debian:trixie-slim@sha256:a29215f6a35e51e22adffa17f89e9d2ef06214e64a2bad10d765c46aea49f11f AS service
 RUN apt-get update && apt-get install -y --no-install-recommends python3 python3-venv python3-sgp4 libsodium23 ca-certificates tzdata && rm -rf /var/lib/apt/lists/*
+COPY --from=spectrum /lib/ld-musl-x86_64.so.1 /lib/ld-musl-x86_64.so.1
+COPY --from=spectrum /usr/lib/ /usr/lib/
+COPY --from=spectrum /usr/bin/ffmpeg /usr/local/bin/ffmpeg
+COPY --from=spectrum /lib/apk/db/ /usr/share/mars-spectrum/apk-db/
 COPY --from=stockfish /out/bin/stockfish /usr/local/bin/stockfish
 COPY --from=stockfish /out/doc/ /usr/share/doc/stockfish/
 COPY --from=stockfish /out/source/ /usr/src/stockfish/
