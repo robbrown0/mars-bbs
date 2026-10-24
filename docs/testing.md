@@ -275,3 +275,29 @@ Validated on 2026-10-24 for iPad spectrum fallback and browser mute:
   retained, stopped, as the immediate rollback target
 - the consistent pre-deployment database snapshot SHA-256 is
   `7aef0abc7209e502bc4be518e3c48e0e7a200af5473b08cec816589137b2a856`
+
+Validated on 2026-10-24 for spectrum sensitivity tuning:
+
+- all 81 tests passed in an isolated, network-disabled container
+- a 30-second sample from a real read-only NAS track produced 240 analysis
+  frames with no decoder errors
+- the former direct amplitude mapping averaged only 2–15 percent across most
+  bars; the tuned mapping averaged 26–55 percent across the upper 17 bars and
+  reached 35–74 percent at the 90th percentile while retaining bass peaks
+- 24 logarithmic source buckets are remapped into 18 display bands using
+  cube-root amplitude scaling and gradual high-frequency compensation
+- analysis versioning invalidates earlier cached timelines without modifying
+  source audio files
+- uncached tracks publish a 30-second spectrum preview before the full analysis;
+  the browser polls at 300 milliseconds until that preview is ready, renders it
+  immediately, and refreshes the complete timeline in the background
+- on the real NAS sample, the 240-frame preview completed in 0.38 seconds and
+  compressed to 3,672 bytes; the complete 1,951-frame track completed in 1.94
+  seconds and compressed to 28,231 bytes
+- deployed `musicd.py` SHA-256 is
+  `966e6dd00cd7a7fecdd730e59180a0a8aee000867e4e9274a14b7365e6d55ea1`
+- production remained healthy with zero restarts, database integrity OK and
+  26,075 available tracks; non-root, read-only, dropped-capability,
+  `no-new-privileges` and loopback-only restrictions remain in place
+- the consistent pre-deployment database snapshot SHA-256 is
+  `ea3a46c0d98bf1343422b79590334a355753f1e276e7b1a0a4e62f120097c8c2`

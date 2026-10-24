@@ -333,7 +333,9 @@ class MusicTests(unittest.TestCase):
         self.assertIn("requestAnimationFrame(drawSpectrum)", page)
         self.assertIn("/api/spectrum/", page)
         self.assertIn("X-MarsAmp-Interval-Ms", page)
+        self.assertIn("X-MarsAmp-Complete", page)
         self.assertIn("audio.currentTime*1000/cachedSpectrum.interval", page)
+        self.assertIn("requestCachedSpectrum(currentTrack,true)", page)
         self.assertNotIn("Date.now()/145", page)
         self.assertNotIn('Shuffle is on. The current cycle will not repeat songs.', page)
         self.assertNotIn('Sequential play is on.', page)
@@ -356,27 +358,38 @@ class MusicTests(unittest.TestCase):
         track_id = int(tracks[0]["id"])
         other_id = int(tracks[1]["id"])
         self.music.command(IDENTITY["account_id"], "play", track_id)
-        bands, height, frames = 18, 100, 2
-        raw = bytearray(bands * height * frames)
+        bands, source_bands, height, frames = 18, 24, 100, 240
+        raw = bytearray(source_bands * height * frames)
         for frame in range(frames):
-            for band in range(bands):
-                active = min(height, 4 + frame * 8 + band)
+            for band in range(source_bands):
+                active = min(height, 2 + frame * 4 + band)
                 for row in range(height - active, height):
-                    raw[frame * bands * height + row * bands + band] = 255
+                    raw[frame * source_bands * height + row * source_bands + band] = 255
         completed = SimpleNamespace(returncode=0, stdout=bytes(raw), stderr=b"")
-        with patch("marsv2.musicd.subprocess.run", return_value=completed) as run:
+        with patch("marsv2.musicd.subprocess.run", return_value=completed) as run, \
+                patch.object(self.music, "_store_spectrum",
+                             wraps=self.music._store_spectrum) as store:
             self.music._build_spectrum(track_id)
-        command = run.call_args.args[0]
-        self.assertEqual(command[0], "ffmpeg")
-        self.assertIn("-protocol_whitelist", command)
-        self.assertIn("file,pipe", command)
-        self.assertIn("1800", command)
-        self.assertNotIn("shell", run.call_args.kwargs)
+        self.assertEqual(run.call_count, 2)
+        preview_command = run.call_args_list[0].args[0]
+        full_command = run.call_args_list[1].args[0]
+        self.assertEqual(preview_command[0], "ffmpeg")
+        self.assertIn("-protocol_whitelist", preview_command)
+        self.assertIn("file,pipe", preview_command)
+        self.assertIn("30", preview_command)
+        self.assertIn("1800", full_command)
+        self.assertTrue(any("showfreqs=s=24x100" in value
+                            for value in preview_command))
+        self.assertTrue(any("ascale=cbrt" in value for value in preview_command))
+        self.assertNotIn("shell", run.call_args_list[0].kwargs)
+        self.assertFalse(store.call_args_list[0].args[-1])
+        self.assertTrue(store.call_args_list[1].args[-1])
         result = self.music.spectrum(IDENTITY["account_id"], track_id)
         self.assertEqual(result["status"], "ready")
         self.assertEqual(result["bands"], bands)
         self.assertEqual(result["frames"], frames)
         self.assertEqual(result["interval_ms"], 125)
+        self.assertTrue(result["complete"])
         self.assertEqual(len(result["data"]), bands * frames)
         self.assertGreater(max(result["data"]), min(result["data"]))
         self.assertNotIn(self.temporary.name, repr(result))

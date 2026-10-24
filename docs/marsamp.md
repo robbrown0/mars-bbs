@@ -63,13 +63,24 @@ that timestamped path as well. The display therefore follows the music while
 the page is active without routing primary playback through Web Audio, which
 could compromise native lock-screen, background, or AirPlay behavior.
 
+The server analyzer measures 24 logarithmic source-frequency buckets and maps
+them across the 18 visible bars. Cube-root amplitude scaling and a gradual
+high-frequency sensitivity adjustment compensate for the natural spectral
+rolloff of mastered music and the small display height. Quiet high bands remain
+visible and responsive, while silence stays at the resting floor and strong
+bass transients can still reach full height. Cached timelines carry an analysis
+version so tuning changes cannot reuse stale bar data.
+
 The fallback is lazy and private: only the authenticated account's current
 track can request it, one analysis worker runs at a time, queued work and track
 length are bounded, and the 1,000 most recently generated timelines are cached.
 The binary response contains 8 samples per second of bar levels—not audio,
 filenames, NAS paths, credentials, or tags. Source recordings are read-only and
-are never modified. The first uncached song may show the resting meter for a
-few seconds while analysis completes; repeat playback uses the cache.
+are never modified. For an uncached song, the service publishes a 30-second
+preview first so the meter can begin within the first browser poll, then replaces
+it with the complete-song timeline in the background. The browser continues to
+render the preview while checking for the completed timeline. Repeat playback
+uses the completed cache immediately.
 
 Remote speakers do not receive the HTTP-only MarsAmp browser cookie. Instead,
 an authenticated state request issues a short-lived HMAC capability for the

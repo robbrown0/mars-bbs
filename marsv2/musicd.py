@@ -51,13 +51,16 @@ ARTWORK_TICKET_LIFETIME = 9 * ARTWORK_TICKET_WINDOW
 STREAM_TICKET_WINDOW = 15 * 60
 STREAM_TICKET_LIFETIME = 9 * STREAM_TICKET_WINDOW
 SPECTRUM_BANDS = 18
+SPECTRUM_SOURCE_BANDS = 24
 SPECTRUM_HEIGHT = 100
 SPECTRUM_RATE = 8
 SPECTRUM_INTERVAL_MS = 1000 // SPECTRUM_RATE
+SPECTRUM_PREVIEW_SECONDS = 30
 SPECTRUM_MAX_SECONDS = 30 * 60
 SPECTRUM_RETRY_SECONDS = 10 * 60
 SPECTRUM_MAX_QUEUED = 4
 SPECTRUM_CACHE_TRACKS = 1000
+SPECTRUM_VERSION = 2
 DEFAULT_ARTWORK_USER_AGENT = (
     "MarsHotelBBS/1.0 (https://github.com/robbrown0/mars-bbs)"
 )
@@ -171,6 +174,8 @@ CREATE TABLE IF NOT EXISTS album_artwork (
 CREATE TABLE IF NOT EXISTS track_spectra (
   track_id INTEGER PRIMARY KEY REFERENCES tracks(id) ON DELETE CASCADE,
   file_modified_ns INTEGER NOT NULL,
+  version INTEGER NOT NULL,
+  complete INTEGER NOT NULL,
   interval_ms INTEGER NOT NULL,
   bands INTEGER NOT NULL,
   frames INTEGER NOT NULL,
@@ -298,6 +303,15 @@ class Music:
         # every database access is serialized by self.lock.
         self.db = connect(db_path, check_same_thread=False)
         self.db.executescript(SCHEMA)
+        spectrum_columns = {
+            str(row["name"]) for row in self.db.execute("PRAGMA table_info(track_spectra)")
+        }
+        if "version" not in spectrum_columns:
+            self.db.execute(
+                "ALTER TABLE track_spectra ADD COLUMN version INTEGER NOT NULL DEFAULT 1")
+        if "complete" not in spectrum_columns:
+            self.db.execute(
+                "ALTER TABLE track_spectra ADD COLUMN complete INTEGER NOT NULL DEFAULT 1")
         self.session_socket = session_socket
         self.base_sources = {name: os.path.realpath(path) for name, path in sources.items()}
         self.extra_root = os.path.realpath(extra_root) if extra_root else None
@@ -1001,71 +1015,90 @@ class Music:
             raise RPCError("track changed; catalog refresh required")
         return row, candidate
 
+    @staticmethod
+    def _analyze_spectrum(filename: str, seconds: int,
+                          timeout: int) -> tuple[int, bytes]:
+        command = [
+            "ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin",
+            "-threads", "1", "-protocol_whitelist", "file,pipe",
+            "-i", filename, "-t", str(seconds), "-vn", "-filter_complex",
+            (f"showfreqs=s={SPECTRUM_SOURCE_BANDS}x{SPECTRUM_HEIGHT}:"
+             f"r={SPECTRUM_RATE}:mode=bar:ascale=cbrt:fscale=log:"
+             "cmode=combined:colors=white,format=gray"),
+            "-an", "-f", "rawvideo", "-pix_fmt", "gray", "pipe:1",
+        ]
+        completed = subprocess.run(
+            command, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE, check=False, timeout=timeout,
+        )
+        frame_bytes = SPECTRUM_SOURCE_BANDS * SPECTRUM_HEIGHT
+        raw = completed.stdout
+        if (completed.returncode != 0 or not raw or len(raw) % frame_bytes != 0):
+            raise RuntimeError("spectrum analysis failed")
+        frames = len(raw) // frame_bytes
+        if frames > SPECTRUM_RATE * seconds + 2:
+            raise RuntimeError("spectrum analysis exceeded its bound")
+        levels = bytearray(frames * SPECTRUM_BANDS)
+        view = memoryview(raw)
+        for frame in range(frames):
+            start = frame * frame_bytes
+            for band in range(SPECTRUM_BANDS):
+                source_band = round(
+                    band * (SPECTRUM_SOURCE_BANDS - 2) / (SPECTRUM_BANDS - 1))
+                active = 0
+                for y in range(SPECTRUM_HEIGHT):
+                    value = view[start + y * SPECTRUM_SOURCE_BANDS + source_band]
+                    if value > 8:
+                        active += 1
+                gain = 5.0 + 3.0 * band / (SPECTRUM_BANDS - 1)
+                levels[frame * SPECTRUM_BANDS + band] = min(
+                    255, round(active * gain))
+        return frames, zlib.compress(bytes(levels), 9)
+
+    def _store_spectrum(self, track_id: int, modified_ns: int, frames: int,
+                        compressed: bytes, complete: bool) -> None:
+        with self.lock, self.db:
+            current = self.db.execute(
+                "SELECT modified_ns FROM tracks WHERE id=? AND available=1",
+                (track_id,),
+            ).fetchone()
+            if current is None or int(current["modified_ns"]) != modified_ns:
+                raise RuntimeError("track changed during spectrum analysis")
+            self.db.execute(
+                "INSERT INTO track_spectra(track_id,file_modified_ns,version,complete,"
+                "interval_ms,bands,frames,data,updated_at) VALUES(?,?,?,?,?,?,?,?,?) "
+                "ON CONFLICT(track_id) DO UPDATE SET "
+                "file_modified_ns=excluded.file_modified_ns,version=excluded.version,"
+                "complete=excluded.complete,interval_ms=excluded.interval_ms,"
+                "bands=excluded.bands,frames=excluded.frames,data=excluded.data,"
+                "updated_at=excluded.updated_at",
+                (track_id, modified_ns, SPECTRUM_VERSION, int(complete),
+                 SPECTRUM_INTERVAL_MS, SPECTRUM_BANDS, frames, compressed,
+                 int(time.time())),
+            )
+            self.db.execute(
+                "DELETE FROM track_spectra WHERE track_id IN ("
+                "SELECT track_id FROM track_spectra ORDER BY updated_at DESC "
+                "LIMIT -1 OFFSET ?)", (SPECTRUM_CACHE_TRACKS,),
+            )
+            self.spectrum_failures.pop(track_id, None)
+
     def _build_spectrum(self, track_id: int) -> None:
-        """Build a compact, path-free frequency timeline for one track."""
+        """Publish a fast preview, then cache the complete frequency timeline."""
         try:
             with self.spectrum_worker:
                 row, filename = self._track_file(track_id)
                 modified_ns = int(row["modified_ns"])
-                command = [
-                    "ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin",
-                    "-threads", "1", "-protocol_whitelist", "file,pipe",
-                    "-i", filename, "-t", str(SPECTRUM_MAX_SECONDS), "-vn",
-                    "-filter_complex",
-                    (f"showfreqs=s={SPECTRUM_BANDS}x{SPECTRUM_HEIGHT}:"
-                     f"r={SPECTRUM_RATE}:mode=bar:ascale=sqrt:fscale=log:"
-                     "cmode=combined:colors=white,format=gray"),
-                    "-an", "-f", "rawvideo", "-pix_fmt", "gray", "pipe:1",
-                ]
-                completed = subprocess.run(
-                    command, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE, check=False, timeout=180,
-                )
-                frame_bytes = SPECTRUM_BANDS * SPECTRUM_HEIGHT
-                raw = completed.stdout
-                if (completed.returncode != 0 or not raw
-                        or len(raw) % frame_bytes != 0):
-                    raise RuntimeError("spectrum analysis failed")
-                frames = len(raw) // frame_bytes
-                if frames > SPECTRUM_RATE * SPECTRUM_MAX_SECONDS + 2:
-                    raise RuntimeError("spectrum analysis exceeded its bound")
-                levels = bytearray(frames * SPECTRUM_BANDS)
-                view = memoryview(raw)
-                for frame in range(frames):
-                    start = frame * frame_bytes
-                    for band in range(SPECTRUM_BANDS):
-                        active = 0
-                        for y in range(SPECTRUM_HEIGHT):
-                            value = view[start + y * SPECTRUM_BANDS + band]
-                            if value > 8:
-                                active += 1
-                        levels[frame * SPECTRUM_BANDS + band] = min(
-                            255, active * 255 // SPECTRUM_HEIGHT)
-                compressed = zlib.compress(bytes(levels), 9)
-                with self.lock, self.db:
-                    current = self.db.execute(
-                        "SELECT modified_ns FROM tracks WHERE id=? AND available=1",
-                        (track_id,),
-                    ).fetchone()
-                    if current is None or int(current["modified_ns"]) != modified_ns:
-                        raise RuntimeError("track changed during spectrum analysis")
-                    self.db.execute(
-                        "INSERT INTO track_spectra(track_id,file_modified_ns,interval_ms,"
-                        "bands,frames,data,updated_at) VALUES(?,?,?,?,?,?,?) "
-                        "ON CONFLICT(track_id) DO UPDATE SET "
-                        "file_modified_ns=excluded.file_modified_ns,"
-                        "interval_ms=excluded.interval_ms,bands=excluded.bands,"
-                        "frames=excluded.frames,data=excluded.data,"
-                        "updated_at=excluded.updated_at",
-                        (track_id, modified_ns, SPECTRUM_INTERVAL_MS,
-                         SPECTRUM_BANDS, frames, compressed, int(time.time())),
-                    )
-                    self.db.execute(
-                        "DELETE FROM track_spectra WHERE track_id IN ("
-                        "SELECT track_id FROM track_spectra ORDER BY updated_at DESC "
-                        "LIMIT -1 OFFSET ?)", (SPECTRUM_CACHE_TRACKS,),
-                    )
-                    self.spectrum_failures.pop(track_id, None)
+                preview_frames, preview = self._analyze_spectrum(
+                    filename, SPECTRUM_PREVIEW_SECONDS, 30)
+                short_track = preview_frames < SPECTRUM_RATE * SPECTRUM_PREVIEW_SECONDS - 1
+                self._store_spectrum(
+                    track_id, modified_ns, preview_frames, preview, short_track)
+                if not short_track:
+                    frames, compressed = self._analyze_spectrum(
+                        filename, SPECTRUM_MAX_SECONDS, 180)
+                    self._store_spectrum(
+                        track_id, modified_ns, frames, compressed, True)
         except (OSError, RuntimeError, subprocess.SubprocessError, zlib.error):
             with self.lock:
                 self.spectrum_failures[track_id] = time.monotonic()
@@ -1086,11 +1119,11 @@ class Music:
             if track is None:
                 raise RPCError("track unavailable")
             cached = self.db.execute(
-                "SELECT file_modified_ns,interval_ms,bands,frames,data "
+                "SELECT file_modified_ns,version,complete,interval_ms,bands,frames,data "
                 "FROM track_spectra WHERE track_id=?", (track_id,),
             ).fetchone()
             if cached is not None and int(cached["file_modified_ns"]) == int(
-                    track["modified_ns"]):
+                    track["modified_ns"]) and int(cached["version"]) == SPECTRUM_VERSION:
                 try:
                     payload = zlib.decompress(bytes(cached["data"]))
                 except zlib.error:
@@ -1100,8 +1133,13 @@ class Music:
                 interval = int(cached["interval_ms"])
                 if (bands == SPECTRUM_BANDS and interval == SPECTRUM_INTERVAL_MS
                         and frames > 0 and len(payload) == bands * frames):
+                    failed_at = self.spectrum_failures.get(track_id, 0.0)
+                    complete = bool(cached["complete"]) or bool(
+                        failed_at and time.monotonic() - failed_at
+                        < SPECTRUM_RETRY_SECONDS)
                     return {"status": "ready", "bands": bands, "frames": frames,
-                            "interval_ms": interval, "data": payload}
+                            "interval_ms": interval, "complete": complete,
+                            "data": payload}
                 self.db.execute("DELETE FROM track_spectra WHERE track_id=?", (track_id,))
             failed_at = self.spectrum_failures.get(track_id, 0.0)
             if failed_at and time.monotonic() - failed_at < SPECTRUM_RETRY_SECONDS:
@@ -1968,7 +2006,7 @@ function drawSpectrum(){spectrumFrame=0;if(audio.paused){stopSpectrum();return}i
 async function prepareSpectrum(){if(spectrumAnalyser){try{if(spectrumContext.state==='suspended')await spectrumContext.resume()}catch(error){}return spectrumContext.state==='running'}if(spectrumStarting||spectrumUnavailable||remoteConnected())return false;const capture=audio.captureStream||audio.mozCaptureStream,Context=window.AudioContext||window.webkitAudioContext;if(typeof capture!=='function'||!Context){spectrumUnavailable=true;return false}spectrumStarting=true;try{const stream=capture.call(audio);if(!stream.getAudioTracks().length)throw new Error('no audio capture track');const context=new Context(),source=context.createMediaStreamSource(stream),analyser=context.createAnalyser();analyser.fftSize=512;analyser.minDecibels=-90;analyser.maxDecibels=-18;analyser.smoothingTimeConstant=.72;source.connect(analyser);spectrumContext=context;spectrumSource=source;spectrumAnalyser=analyser;spectrumData=new Uint8Array(analyser.frequencyBinCount);if(context.state==='suspended')await context.resume();return context.state==='running'}catch(error){spectrumUnavailable=true;return false}finally{spectrumStarting=false}}
 function resetCachedSpectrum(trackId=0){if(cachedSpectrumTimer)clearTimeout(cachedSpectrumTimer);cachedSpectrumTimer=0;cachedSpectrum=null;cachedSpectrumTrack=Number(trackId)||0;cachedSpectrumAttempts=0}
 function needsCachedSpectrum(){return spectrumUnavailable||remoteConnected()||typeof(audio.captureStream||audio.mozCaptureStream)!=='function'}
-async function requestCachedSpectrum(track){if(!track||!needsCachedSpectrum())return;const trackId=Number(track.id)||0;if(!trackId)return;if(cachedSpectrumTrack!==trackId)resetCachedSpectrum(trackId);if(cachedSpectrum||cachedSpectrumTimer)return;cachedSpectrumAttempts+=1;try{const response=await fetch(BASE+'/api/spectrum/'+encodeURIComponent(trackId),{cache:'no-store',credentials:'same-origin'});if(response.status===401){sessionEnded();return}if(response.status===202){if(cachedSpectrumAttempts<180)cachedSpectrumTimer=setTimeout(()=>{cachedSpectrumTimer=0;if(currentTrack&&Number(currentTrack.id)===trackId)requestCachedSpectrum(currentTrack)},1000);return}if(response.status===204)return;if(!response.ok)throw new Error('spectrum unavailable');const bands=Number(response.headers.get('X-MarsAmp-Bands')),frames=Number(response.headers.get('X-MarsAmp-Frames')),interval=Number(response.headers.get('X-MarsAmp-Interval-Ms')),data=new Uint8Array(await response.arrayBuffer());if(bands!==18||frames<1||interval<50||data.length!==bands*frames)throw new Error('invalid spectrum');if(!currentTrack||Number(currentTrack.id)!==trackId)return;cachedSpectrum={bands,frames,interval,data};if(!audio.paused&&!spectrumFrame)spectrumFrame=requestAnimationFrame(drawSpectrum)}catch(error){if(cachedSpectrumAttempts<6)cachedSpectrumTimer=setTimeout(()=>{cachedSpectrumTimer=0;if(currentTrack&&Number(currentTrack.id)===trackId)requestCachedSpectrum(currentTrack)},2000)}}
+async function requestCachedSpectrum(track,refresh=false){if(!track||!needsCachedSpectrum())return;const trackId=Number(track.id)||0;if(!trackId)return;if(cachedSpectrumTrack!==trackId)resetCachedSpectrum(trackId);if((cachedSpectrum&&!refresh)||cachedSpectrumTimer)return;cachedSpectrumAttempts+=1;try{const response=await fetch(BASE+'/api/spectrum/'+encodeURIComponent(trackId),{cache:'no-store',credentials:'same-origin'});if(response.status===401){sessionEnded();return}if(response.status===202){if(cachedSpectrumAttempts<600)cachedSpectrumTimer=setTimeout(()=>{cachedSpectrumTimer=0;if(currentTrack&&Number(currentTrack.id)===trackId)requestCachedSpectrum(currentTrack)},300);return}if(response.status===204)return;if(!response.ok)throw new Error('spectrum unavailable');const bands=Number(response.headers.get('X-MarsAmp-Bands')),frames=Number(response.headers.get('X-MarsAmp-Frames')),interval=Number(response.headers.get('X-MarsAmp-Interval-Ms')),complete=response.headers.get('X-MarsAmp-Complete')!=='0',data=new Uint8Array(await response.arrayBuffer());if(bands!==18||frames<1||interval<50||data.length!==bands*frames)throw new Error('invalid spectrum');if(!currentTrack||Number(currentTrack.id)!==trackId)return;cachedSpectrum={bands,frames,interval,data};if(!audio.paused&&!spectrumFrame)spectrumFrame=requestAnimationFrame(drawSpectrum);if(!complete)cachedSpectrumTimer=setTimeout(()=>{cachedSpectrumTimer=0;if(currentTrack&&Number(currentTrack.id)===trackId)requestCachedSpectrum(currentTrack,true)},1000)}catch(error){if(cachedSpectrumAttempts<10)cachedSpectrumTimer=setTimeout(()=>{cachedSpectrumTimer=0;if(currentTrack&&Number(currentTrack.id)===trackId)requestCachedSpectrum(currentTrack,Boolean(cachedSpectrum))},1000)}}
 function bars(on){if(!on){stopSpectrum();return}if(spectrumFrame)return;prepareSpectrum().then(ready=>{if(!ready&&currentTrack)requestCachedSpectrum(currentTrack);if((ready||cachedSpectrum)&&!audio.paused&&!spectrumFrame)spectrumFrame=requestAnimationFrame(drawSpectrum)})}
 function showHint(message){hint.hidden=false;hint.textContent=message}
 function hideHint(){hint.hidden=true;hint.textContent=''}
@@ -2183,6 +2221,7 @@ class MusicHTTP(BaseHTTPRequestHandler):
             "X-MarsAmp-Bands": str(result["bands"]),
             "X-MarsAmp-Frames": str(result["frames"]),
             "X-MarsAmp-Interval-Ms": str(result["interval_ms"]),
+            "X-MarsAmp-Complete": "1" if result["complete"] else "0",
         }, cache_control="private, max-age=3600")
         self.wfile.write(payload)
 
