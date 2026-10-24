@@ -311,6 +311,8 @@ class MusicTests(unittest.TestCase):
         self.assertIn('class="cast-glyph"', page)
         self.assertIn('id="output-label"', page)
         self.assertIn('class="utility"', page)
+        self.assertIn('.utility{display:grid;grid-template-columns:repeat(5,1fr)', page)
+        self.assertIn('.utility-actions{grid-column:4/6', page)
         self.assertIn('>OUTPUT</span>', page)
         self.assertIn('id="shuffle"', page)
         self.assertIn('class="shuffle-glyph"', page)
@@ -331,6 +333,8 @@ class MusicTests(unittest.TestCase):
         self.assertIn('x-webkit-airplay="allow"', page)
         self.assertIn("webkitShowPlaybackTargetPicker", page)
         self.assertIn("audio.remote.prompt()", page)
+        self.assertNotIn("Sonos appears here when it supports AirPlay", page)
+        self.assertNotIn("Choose a Cast or remote playback device", page)
         self.assertIn("state.output_stream", page)
 
     def test_playback_list_advances_and_wraps(self) -> None:
