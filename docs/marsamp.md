@@ -63,13 +63,24 @@ that timestamped path as well. The display therefore follows the music while
 the page is active without routing primary playback through Web Audio, which
 could compromise native lock-screen, background, or AirPlay behavior.
 
+The server analyzer measures 24 logarithmic source-frequency buckets and maps
+them across the 18 visible bars. Cube-root amplitude scaling and a gradual
+high-frequency sensitivity adjustment compensate for the natural spectral
+rolloff of mastered music and the small display height. Quiet high bands remain
+visible and responsive, while silence stays at the resting floor and strong
+bass transients can still reach full height. Cached timelines carry an analysis
+version so tuning changes cannot reuse stale bar data.
+
 The fallback is lazy and private: only the authenticated account's current
 track can request it, one analysis worker runs at a time, queued work and track
 length are bounded, and the 1,000 most recently generated timelines are cached.
 The binary response contains 8 samples per second of bar levels—not audio,
 filenames, NAS paths, credentials, or tags. Source recordings are read-only and
-are never modified. The first uncached song may show the resting meter for a
-few seconds while analysis completes; repeat playback uses the cache.
+are never modified. For an uncached song, the service publishes a 30-second
+preview first so the meter can begin within the first browser poll, then replaces
+it with the complete-song timeline in the background. The browser continues to
+render the preview while checking for the completed timeline. Repeat playback
+uses the completed cache immediately.
 
 Remote speakers do not receive the HTTP-only MarsAmp browser cookie. Instead,
 an authenticated state request issues a short-lived HMAC capability for the
@@ -99,6 +110,19 @@ Inside MarsAmp, use:
 Leaving MarsAmp for another BBS area preserves the current search or playlist, highlighted song, list position, and sequential/shuffle choice for the rest of that SSH login session. Returning to MarsAmp restores that view and follows the currently playing song if the browser advanced while the listener was elsewhere. The paired browser continues playing in the background and automatically advances through the terminal-selected result list. Sequential mode wraps at the end. Shuffle mode creates a randomized bag of the other songs, plays every song once before refilling it, and never immediately repeats the current song. Browser completion and the terminal `N` command use this same queue; `B` walks back through playback history.
 
 The browser player also provides **BACK** and **FORWARD** buttons. They use the same queue, shuffle bag, and playback history as the terminal controls, so a listener can change songs from the browser while the SSH session is idle or disconnected. An expandable **QUEUE** panel shows the current song and upcoming order without disclosing storage paths. In full-library shuffle it reports the live catalog size and explains that the next track is drawn when playback advances instead of attempting to render thousands of rows.
+
+**STOP** retains the selected song, playlist, upcoming shuffle order and history.
+The browser's **PLAY** button can therefore start that stopped selection again,
+including after the player page is refreshed. Successful play, pause and stop
+commands stay visually quiet; connection and playback errors remain visible.
+
+The audio element requests the browser's native adaptive buffer for each song.
+When a connection stalls, MarsAmp waits for the browser to recover naturally,
+using a longer grace period on Save-Data and slow links. If playback still
+cannot continue, it reconnects the authenticated byte-range stream at the last
+known position with bounded exponential backoff. Offline/online transitions
+also trigger recovery. This does not download or persist complete recordings
+outside the browser cache, and it does not expose a NAS path or credential.
 
 Twenty built-in playlists are presented with **1980s Essentials** first. Nineteen are curated: the original all-time, classic-rock, 1970s, alternative, country, soul/R&B, songwriter, party, and road-trip collections plus New Wave Neon, Arena Rock Anthems, Alternative Mixtape, Country Roadhouse, Women of Mars, Southern & Roots Rock, Unplugged Sunday, Funk/Disco/Dancefloor, and After Midnight. The expanded 1980s collection contains 148 songs; the nine additional curated lists contain 40–45 each. The current Mars Hotel catalog resolves all 853 curated playlist entries.
 

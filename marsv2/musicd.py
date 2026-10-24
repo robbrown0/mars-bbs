@@ -51,13 +51,16 @@ ARTWORK_TICKET_LIFETIME = 9 * ARTWORK_TICKET_WINDOW
 STREAM_TICKET_WINDOW = 15 * 60
 STREAM_TICKET_LIFETIME = 9 * STREAM_TICKET_WINDOW
 SPECTRUM_BANDS = 18
+SPECTRUM_SOURCE_BANDS = 24
 SPECTRUM_HEIGHT = 100
 SPECTRUM_RATE = 8
 SPECTRUM_INTERVAL_MS = 1000 // SPECTRUM_RATE
+SPECTRUM_PREVIEW_SECONDS = 30
 SPECTRUM_MAX_SECONDS = 30 * 60
 SPECTRUM_RETRY_SECONDS = 10 * 60
 SPECTRUM_MAX_QUEUED = 4
 SPECTRUM_CACHE_TRACKS = 1000
+SPECTRUM_VERSION = 2
 DEFAULT_ARTWORK_USER_AGENT = (
     "MarsHotelBBS/1.0 (https://github.com/robbrown0/mars-bbs)"
 )
@@ -171,6 +174,8 @@ CREATE TABLE IF NOT EXISTS album_artwork (
 CREATE TABLE IF NOT EXISTS track_spectra (
   track_id INTEGER PRIMARY KEY REFERENCES tracks(id) ON DELETE CASCADE,
   file_modified_ns INTEGER NOT NULL,
+  version INTEGER NOT NULL,
+  complete INTEGER NOT NULL,
   interval_ms INTEGER NOT NULL,
   bands INTEGER NOT NULL,
   frames INTEGER NOT NULL,
@@ -298,6 +303,15 @@ class Music:
         # every database access is serialized by self.lock.
         self.db = connect(db_path, check_same_thread=False)
         self.db.executescript(SCHEMA)
+        spectrum_columns = {
+            str(row["name"]) for row in self.db.execute("PRAGMA table_info(track_spectra)")
+        }
+        if "version" not in spectrum_columns:
+            self.db.execute(
+                "ALTER TABLE track_spectra ADD COLUMN version INTEGER NOT NULL DEFAULT 1")
+        if "complete" not in spectrum_columns:
+            self.db.execute(
+                "ALTER TABLE track_spectra ADD COLUMN complete INTEGER NOT NULL DEFAULT 1")
         self.session_socket = session_socket
         self.base_sources = {name: os.path.realpath(path) for name, path in sources.items()}
         self.extra_root = os.path.realpath(extra_root) if extra_root else None
@@ -1001,71 +1015,90 @@ class Music:
             raise RPCError("track changed; catalog refresh required")
         return row, candidate
 
+    @staticmethod
+    def _analyze_spectrum(filename: str, seconds: int,
+                          timeout: int) -> tuple[int, bytes]:
+        command = [
+            "ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin",
+            "-threads", "1", "-protocol_whitelist", "file,pipe",
+            "-i", filename, "-t", str(seconds), "-vn", "-filter_complex",
+            (f"showfreqs=s={SPECTRUM_SOURCE_BANDS}x{SPECTRUM_HEIGHT}:"
+             f"r={SPECTRUM_RATE}:mode=bar:ascale=cbrt:fscale=log:"
+             "cmode=combined:colors=white,format=gray"),
+            "-an", "-f", "rawvideo", "-pix_fmt", "gray", "pipe:1",
+        ]
+        completed = subprocess.run(
+            command, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE, check=False, timeout=timeout,
+        )
+        frame_bytes = SPECTRUM_SOURCE_BANDS * SPECTRUM_HEIGHT
+        raw = completed.stdout
+        if (completed.returncode != 0 or not raw or len(raw) % frame_bytes != 0):
+            raise RuntimeError("spectrum analysis failed")
+        frames = len(raw) // frame_bytes
+        if frames > SPECTRUM_RATE * seconds + 2:
+            raise RuntimeError("spectrum analysis exceeded its bound")
+        levels = bytearray(frames * SPECTRUM_BANDS)
+        view = memoryview(raw)
+        for frame in range(frames):
+            start = frame * frame_bytes
+            for band in range(SPECTRUM_BANDS):
+                source_band = round(
+                    band * (SPECTRUM_SOURCE_BANDS - 2) / (SPECTRUM_BANDS - 1))
+                active = 0
+                for y in range(SPECTRUM_HEIGHT):
+                    value = view[start + y * SPECTRUM_SOURCE_BANDS + source_band]
+                    if value > 8:
+                        active += 1
+                gain = 5.0 + 3.0 * band / (SPECTRUM_BANDS - 1)
+                levels[frame * SPECTRUM_BANDS + band] = min(
+                    255, round(active * gain))
+        return frames, zlib.compress(bytes(levels), 9)
+
+    def _store_spectrum(self, track_id: int, modified_ns: int, frames: int,
+                        compressed: bytes, complete: bool) -> None:
+        with self.lock, self.db:
+            current = self.db.execute(
+                "SELECT modified_ns FROM tracks WHERE id=? AND available=1",
+                (track_id,),
+            ).fetchone()
+            if current is None or int(current["modified_ns"]) != modified_ns:
+                raise RuntimeError("track changed during spectrum analysis")
+            self.db.execute(
+                "INSERT INTO track_spectra(track_id,file_modified_ns,version,complete,"
+                "interval_ms,bands,frames,data,updated_at) VALUES(?,?,?,?,?,?,?,?,?) "
+                "ON CONFLICT(track_id) DO UPDATE SET "
+                "file_modified_ns=excluded.file_modified_ns,version=excluded.version,"
+                "complete=excluded.complete,interval_ms=excluded.interval_ms,"
+                "bands=excluded.bands,frames=excluded.frames,data=excluded.data,"
+                "updated_at=excluded.updated_at",
+                (track_id, modified_ns, SPECTRUM_VERSION, int(complete),
+                 SPECTRUM_INTERVAL_MS, SPECTRUM_BANDS, frames, compressed,
+                 int(time.time())),
+            )
+            self.db.execute(
+                "DELETE FROM track_spectra WHERE track_id IN ("
+                "SELECT track_id FROM track_spectra ORDER BY updated_at DESC "
+                "LIMIT -1 OFFSET ?)", (SPECTRUM_CACHE_TRACKS,),
+            )
+            self.spectrum_failures.pop(track_id, None)
+
     def _build_spectrum(self, track_id: int) -> None:
-        """Build a compact, path-free frequency timeline for one track."""
+        """Publish a fast preview, then cache the complete frequency timeline."""
         try:
             with self.spectrum_worker:
                 row, filename = self._track_file(track_id)
                 modified_ns = int(row["modified_ns"])
-                command = [
-                    "ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin",
-                    "-threads", "1", "-protocol_whitelist", "file,pipe",
-                    "-i", filename, "-t", str(SPECTRUM_MAX_SECONDS), "-vn",
-                    "-filter_complex",
-                    (f"showfreqs=s={SPECTRUM_BANDS}x{SPECTRUM_HEIGHT}:"
-                     f"r={SPECTRUM_RATE}:mode=bar:ascale=sqrt:fscale=log:"
-                     "cmode=combined:colors=white,format=gray"),
-                    "-an", "-f", "rawvideo", "-pix_fmt", "gray", "pipe:1",
-                ]
-                completed = subprocess.run(
-                    command, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE, check=False, timeout=180,
-                )
-                frame_bytes = SPECTRUM_BANDS * SPECTRUM_HEIGHT
-                raw = completed.stdout
-                if (completed.returncode != 0 or not raw
-                        or len(raw) % frame_bytes != 0):
-                    raise RuntimeError("spectrum analysis failed")
-                frames = len(raw) // frame_bytes
-                if frames > SPECTRUM_RATE * SPECTRUM_MAX_SECONDS + 2:
-                    raise RuntimeError("spectrum analysis exceeded its bound")
-                levels = bytearray(frames * SPECTRUM_BANDS)
-                view = memoryview(raw)
-                for frame in range(frames):
-                    start = frame * frame_bytes
-                    for band in range(SPECTRUM_BANDS):
-                        active = 0
-                        for y in range(SPECTRUM_HEIGHT):
-                            value = view[start + y * SPECTRUM_BANDS + band]
-                            if value > 8:
-                                active += 1
-                        levels[frame * SPECTRUM_BANDS + band] = min(
-                            255, active * 255 // SPECTRUM_HEIGHT)
-                compressed = zlib.compress(bytes(levels), 9)
-                with self.lock, self.db:
-                    current = self.db.execute(
-                        "SELECT modified_ns FROM tracks WHERE id=? AND available=1",
-                        (track_id,),
-                    ).fetchone()
-                    if current is None or int(current["modified_ns"]) != modified_ns:
-                        raise RuntimeError("track changed during spectrum analysis")
-                    self.db.execute(
-                        "INSERT INTO track_spectra(track_id,file_modified_ns,interval_ms,"
-                        "bands,frames,data,updated_at) VALUES(?,?,?,?,?,?,?) "
-                        "ON CONFLICT(track_id) DO UPDATE SET "
-                        "file_modified_ns=excluded.file_modified_ns,"
-                        "interval_ms=excluded.interval_ms,bands=excluded.bands,"
-                        "frames=excluded.frames,data=excluded.data,"
-                        "updated_at=excluded.updated_at",
-                        (track_id, modified_ns, SPECTRUM_INTERVAL_MS,
-                         SPECTRUM_BANDS, frames, compressed, int(time.time())),
-                    )
-                    self.db.execute(
-                        "DELETE FROM track_spectra WHERE track_id IN ("
-                        "SELECT track_id FROM track_spectra ORDER BY updated_at DESC "
-                        "LIMIT -1 OFFSET ?)", (SPECTRUM_CACHE_TRACKS,),
-                    )
-                    self.spectrum_failures.pop(track_id, None)
+                preview_frames, preview = self._analyze_spectrum(
+                    filename, SPECTRUM_PREVIEW_SECONDS, 30)
+                short_track = preview_frames < SPECTRUM_RATE * SPECTRUM_PREVIEW_SECONDS - 1
+                self._store_spectrum(
+                    track_id, modified_ns, preview_frames, preview, short_track)
+                if not short_track:
+                    frames, compressed = self._analyze_spectrum(
+                        filename, SPECTRUM_MAX_SECONDS, 180)
+                    self._store_spectrum(
+                        track_id, modified_ns, frames, compressed, True)
         except (OSError, RuntimeError, subprocess.SubprocessError, zlib.error):
             with self.lock:
                 self.spectrum_failures[track_id] = time.monotonic()
@@ -1086,11 +1119,11 @@ class Music:
             if track is None:
                 raise RPCError("track unavailable")
             cached = self.db.execute(
-                "SELECT file_modified_ns,interval_ms,bands,frames,data "
+                "SELECT file_modified_ns,version,complete,interval_ms,bands,frames,data "
                 "FROM track_spectra WHERE track_id=?", (track_id,),
             ).fetchone()
             if cached is not None and int(cached["file_modified_ns"]) == int(
-                    track["modified_ns"]):
+                    track["modified_ns"]) and int(cached["version"]) == SPECTRUM_VERSION:
                 try:
                     payload = zlib.decompress(bytes(cached["data"]))
                 except zlib.error:
@@ -1100,8 +1133,13 @@ class Music:
                 interval = int(cached["interval_ms"])
                 if (bands == SPECTRUM_BANDS and interval == SPECTRUM_INTERVAL_MS
                         and frames > 0 and len(payload) == bands * frames):
+                    failed_at = self.spectrum_failures.get(track_id, 0.0)
+                    complete = bool(cached["complete"]) or bool(
+                        failed_at and time.monotonic() - failed_at
+                        < SPECTRUM_RETRY_SECONDS)
                     return {"status": "ready", "bands": bands, "frames": frames,
-                            "interval_ms": interval, "data": payload}
+                            "interval_ms": interval, "complete": complete,
+                            "data": payload}
                 self.db.execute("DELETE FROM track_spectra WHERE track_id=?", (track_id,))
             failed_at = self.spectrum_failures.get(track_id, 0.0)
             if failed_at and time.monotonic() - failed_at < SPECTRUM_RETRY_SECONDS:
@@ -1481,8 +1519,6 @@ class Music:
                 "serial": 0, "track_id": 0, "queue": [], "mode": "sequential",
             })
             selected = track_id if action == "play" else int(previous.get("track_id", 0))
-            if action == "stop":
-                selected = 0
             selected_queue = (self._play_queue(queue, track_id) if action == "play"
                               else list(previous.get("queue", [])))
             selected_mode = (self._play_mode(mode) if mode is not None
@@ -1498,7 +1534,8 @@ class Music:
             shuffle_bag = (self._shuffled(selected_queue, selected)
                            if action == "play" and selected_mode == "shuffle"
                            and not selected_scope else
-                           list(previous.get("shuffle_bag", [])) if action == "pause" else [])
+                           list(previous.get("shuffle_bag", []))
+                           if action in ("pause", "stop") else [])
             self.playback[account_id] = {
                 "serial": int(previous.get("serial", 0)) + 1,
                 "action": action, "track_id": selected,
@@ -1942,7 +1979,7 @@ details{border-top:1px solid var(--line);background:#0b0f1d}summary{cursor:point
 <section class="utility" aria-label="Playback options"><div class="utility-actions"><button id="mute" class="mute" type="button" title="Mute audio" aria-label="Mute audio" aria-pressed="false"><span class="mute-glyph" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M4 9h4l5-4v14l-5-4H4z" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linejoin="round"/><g class="sound-waves" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><path d="M16 9c1.5 1.7 1.5 4.3 0 6"/><path d="M18.5 6.5c3 3 3 8 0 11"/></g><path class="mute-slash" d="M16 9l5 6m0-6l-5 6" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/></svg></span><span id="mute-label" class="mute-label">MUTE</span></button><button id="shuffle" class="shuffle" type="button" title="Turn shuffle on" aria-label="Turn shuffle on" aria-pressed="false"><span class="shuffle-glyph" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M4 7h2.2c4.7 0 6.2 10 11 10H20M17 14l3 3-3 3M4 17h2.2c1.8 0 3.1-1.5 4.3-3.4M14 8.8C15 7.7 16 7 17.2 7H20M17 4l3 3-3 3" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span id="shuffle-label" class="shuffle-label">SHUFFLE OFF</span></button>
 <button id="output" class="output" type="button" title="Choose an AirPlay or Cast speaker" aria-label="Choose an AirPlay or Cast speaker"><span id="output-label" class="output-label">OUTPUT</span><span class="cast-glyph" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M4 4h15.5A1.5 1.5 0 0 1 21 5.5v11a1.5 1.5 0 0 1-1.5 1.5H14" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 15.5a4.5 4.5 0 0 1 4.5 4.5M4 11.5a8.5 8.5 0 0 1 8.5 8.5" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/><circle cx="4" cy="20" r="1.35" fill="currentColor"/></svg></span></button></div></section>
 <details id="queue-panel"><summary id="queue-summary">QUEUE · loading</summary><div id="queue-meta" class="queue-meta"></div><ol id="queue" class="queue"></ol></details>
-<audio id="audio" preload="metadata" autoplay playsinline x-webkit-airplay="allow"></audio>
+<audio id="audio" preload="auto" autoplay playsinline x-webkit-airplay="allow"></audio>
 </main><script>
 const BASE=__BASE__;const ART192=new URL(BASE+'/artwork-192.png',location.origin).href;const ART512=new URL(BASE+'/artwork-512.png',location.origin).href;
 const audio=document.getElementById('audio'),meter=document.getElementById('meter');
@@ -1958,6 +1995,7 @@ const mute=document.getElementById('mute'),muteLabel=document.getElementById('mu
 const coverEl=document.getElementById('cover');coverEl.onerror=()=>{if(coverEl.src!==ART512)coverEl.src=ART512};
 let enabled=false,serial=-1,currentTrack=null,serverAction='stop',currentMode='sequential',modeLocked=false,metadataKey='',mediaArtworkData='',mediaArtworkType='',localStream='',outputStream='',switchingOutput=false;
 let spectrumContext=null,spectrumSource=null,spectrumAnalyser=null,spectrumData=null,spectrumFrame=0,spectrumStarting=false,spectrumUnavailable=false,cachedSpectrum=null,cachedSpectrumTrack=0,cachedSpectrumTimer=0,cachedSpectrumAttempts=0;
+let stallTimer=0,recoveryTimer=0,recoveryNoticeTimer=0,recoveryAttempts=0,recoveryPosition=0,recoveryNotice=false;
 for(let i=0;i<18;i++)meter.appendChild(document.createElement('i'));
 const text=value=>String(value||'').replace(/[<>]/g,'');
 function clock(value){if(!Number.isFinite(value))return '0:00';let seconds=Math.max(0,Math.floor(value));return Math.floor(seconds/60)+':'+String(seconds%60).padStart(2,'0')}
@@ -1968,13 +2006,22 @@ function drawSpectrum(){spectrumFrame=0;if(audio.paused){stopSpectrum();return}i
 async function prepareSpectrum(){if(spectrumAnalyser){try{if(spectrumContext.state==='suspended')await spectrumContext.resume()}catch(error){}return spectrumContext.state==='running'}if(spectrumStarting||spectrumUnavailable||remoteConnected())return false;const capture=audio.captureStream||audio.mozCaptureStream,Context=window.AudioContext||window.webkitAudioContext;if(typeof capture!=='function'||!Context){spectrumUnavailable=true;return false}spectrumStarting=true;try{const stream=capture.call(audio);if(!stream.getAudioTracks().length)throw new Error('no audio capture track');const context=new Context(),source=context.createMediaStreamSource(stream),analyser=context.createAnalyser();analyser.fftSize=512;analyser.minDecibels=-90;analyser.maxDecibels=-18;analyser.smoothingTimeConstant=.72;source.connect(analyser);spectrumContext=context;spectrumSource=source;spectrumAnalyser=analyser;spectrumData=new Uint8Array(analyser.frequencyBinCount);if(context.state==='suspended')await context.resume();return context.state==='running'}catch(error){spectrumUnavailable=true;return false}finally{spectrumStarting=false}}
 function resetCachedSpectrum(trackId=0){if(cachedSpectrumTimer)clearTimeout(cachedSpectrumTimer);cachedSpectrumTimer=0;cachedSpectrum=null;cachedSpectrumTrack=Number(trackId)||0;cachedSpectrumAttempts=0}
 function needsCachedSpectrum(){return spectrumUnavailable||remoteConnected()||typeof(audio.captureStream||audio.mozCaptureStream)!=='function'}
-async function requestCachedSpectrum(track){if(!track||!needsCachedSpectrum())return;const trackId=Number(track.id)||0;if(!trackId)return;if(cachedSpectrumTrack!==trackId)resetCachedSpectrum(trackId);if(cachedSpectrum||cachedSpectrumTimer)return;cachedSpectrumAttempts+=1;try{const response=await fetch(BASE+'/api/spectrum/'+encodeURIComponent(trackId),{cache:'no-store',credentials:'same-origin'});if(response.status===401){sessionEnded();return}if(response.status===202){if(cachedSpectrumAttempts<180)cachedSpectrumTimer=setTimeout(()=>{cachedSpectrumTimer=0;if(currentTrack&&Number(currentTrack.id)===trackId)requestCachedSpectrum(currentTrack)},1000);return}if(response.status===204)return;if(!response.ok)throw new Error('spectrum unavailable');const bands=Number(response.headers.get('X-MarsAmp-Bands')),frames=Number(response.headers.get('X-MarsAmp-Frames')),interval=Number(response.headers.get('X-MarsAmp-Interval-Ms')),data=new Uint8Array(await response.arrayBuffer());if(bands!==18||frames<1||interval<50||data.length!==bands*frames)throw new Error('invalid spectrum');if(!currentTrack||Number(currentTrack.id)!==trackId)return;cachedSpectrum={bands,frames,interval,data};if(!audio.paused&&!spectrumFrame)spectrumFrame=requestAnimationFrame(drawSpectrum)}catch(error){if(cachedSpectrumAttempts<6)cachedSpectrumTimer=setTimeout(()=>{cachedSpectrumTimer=0;if(currentTrack&&Number(currentTrack.id)===trackId)requestCachedSpectrum(currentTrack)},2000)}}
+async function requestCachedSpectrum(track,refresh=false){if(!track||!needsCachedSpectrum())return;const trackId=Number(track.id)||0;if(!trackId)return;if(cachedSpectrumTrack!==trackId)resetCachedSpectrum(trackId);if((cachedSpectrum&&!refresh)||cachedSpectrumTimer)return;cachedSpectrumAttempts+=1;try{const response=await fetch(BASE+'/api/spectrum/'+encodeURIComponent(trackId),{cache:'no-store',credentials:'same-origin'});if(response.status===401){sessionEnded();return}if(response.status===202){if(cachedSpectrumAttempts<600)cachedSpectrumTimer=setTimeout(()=>{cachedSpectrumTimer=0;if(currentTrack&&Number(currentTrack.id)===trackId)requestCachedSpectrum(currentTrack)},300);return}if(response.status===204)return;if(!response.ok)throw new Error('spectrum unavailable');const bands=Number(response.headers.get('X-MarsAmp-Bands')),frames=Number(response.headers.get('X-MarsAmp-Frames')),interval=Number(response.headers.get('X-MarsAmp-Interval-Ms')),complete=response.headers.get('X-MarsAmp-Complete')!=='0',data=new Uint8Array(await response.arrayBuffer());if(bands!==18||frames<1||interval<50||data.length!==bands*frames)throw new Error('invalid spectrum');if(!currentTrack||Number(currentTrack.id)!==trackId)return;cachedSpectrum={bands,frames,interval,data};if(!audio.paused&&!spectrumFrame)spectrumFrame=requestAnimationFrame(drawSpectrum);if(!complete)cachedSpectrumTimer=setTimeout(()=>{cachedSpectrumTimer=0;if(currentTrack&&Number(currentTrack.id)===trackId)requestCachedSpectrum(currentTrack,true)},1000)}catch(error){if(cachedSpectrumAttempts<10)cachedSpectrumTimer=setTimeout(()=>{cachedSpectrumTimer=0;if(currentTrack&&Number(currentTrack.id)===trackId)requestCachedSpectrum(currentTrack,Boolean(cachedSpectrum))},1000)}}
 function bars(on){if(!on){stopSpectrum();return}if(spectrumFrame)return;prepareSpectrum().then(ready=>{if(!ready&&currentTrack)requestCachedSpectrum(currentTrack);if((ready||cachedSpectrum)&&!audio.paused&&!spectrumFrame)spectrumFrame=requestAnimationFrame(drawSpectrum)})}
 function showHint(message){hint.hidden=false;hint.textContent=message}
 function hideHint(){hint.hidden=true;hint.textContent=''}
 function needsTap(){enabled=false;enable.classList.add('attention');showHint('Your browser blocked automatic audio. Tap PLAY once.')}
 function audioReady(){enabled=true;enable.classList.remove('attention');hideHint()}
 async function beginPlayback(){if(!audio.src){showHint('Choose a song in the BBS or queue first.');return}try{await audio.play();audioReady()}catch(error){needsTap()}}
+function recoveryAllowed(){return serverAction==='play'&&Boolean(currentTrack)&&Boolean(audio.src)}
+function stallGrace(){const connection=navigator.connection||navigator.mozConnection||navigator.webkitConnection;if(!connection)return 6000;if(connection.saveData||/2g/.test(String(connection.effectiveType||'')))return 12000;if(Number(connection.downlink)>0&&Number(connection.downlink)<1)return 10000;return 6000}
+function clearRecovery(reset=false){if(stallTimer)clearTimeout(stallTimer);if(recoveryTimer)clearTimeout(recoveryTimer);if(recoveryNoticeTimer)clearTimeout(recoveryNoticeTimer);stallTimer=0;recoveryTimer=0;recoveryNoticeTimer=0;if(recoveryNotice){hideHint();recoveryNotice=false}if(reset){recoveryAttempts=0;recoveryPosition=0}}
+function recoveryMessage(message){if(recoveryNotice)return;recoveryNotice=true;showHint(message)}
+function recoverStream(){recoveryTimer=0;if(!recoveryAllowed())return;const trackId=Number(currentTrack.id),source=remoteConnected()&&outputStream?outputStream:localStream,position=Number.isFinite(audio.currentTime)?audio.currentTime:recoveryPosition;if(!source)return;recoveryPosition=Math.max(recoveryPosition,position);recoveryAttempts+=1;recoveryMessage(recoveryAttempts>1?'Reconnecting audio…':'Buffering audio…');const restore=()=>{if(!recoveryAllowed()||!currentTrack||Number(currentTrack.id)!==trackId)return;if(Number.isFinite(audio.duration)&&recoveryPosition>0)audio.currentTime=Math.min(recoveryPosition,Math.max(0,audio.duration-.25));beginPlayback()};audio.addEventListener('loadedmetadata',restore,{once:true});audio.src=source;audio.load()}
+function scheduleRecovery(immediate=false){if(!recoveryAllowed()||recoveryTimer)return;if(Number.isFinite(audio.currentTime))recoveryPosition=Math.max(recoveryPosition,audio.currentTime);const delay=immediate?250:Math.min(16000,1000*Math.pow(2,Math.min(recoveryAttempts,4)));recoveryTimer=setTimeout(recoverStream,delay)}
+function mediaStalled(){if(!recoveryAllowed())return;if(!recoveryNoticeTimer&&!recoveryNotice)recoveryNoticeTimer=setTimeout(()=>{recoveryNoticeTimer=0;if(recoveryAllowed())recoveryMessage('Buffering audio…')},750);if(!stallTimer)stallTimer=setTimeout(()=>{stallTimer=0;scheduleRecovery()},stallGrace())}
+function mediaHealthy(){if(stallTimer)clearTimeout(stallTimer);if(recoveryNoticeTimer)clearTimeout(recoveryNoticeTimer);stallTimer=0;recoveryNoticeTimer=0;if(recoveryNotice){hideHint();recoveryNotice=false}}
+function mediaProgress(){mediaHealthy();if(Number.isFinite(audio.currentTime)&&audio.currentTime>recoveryPosition+2){recoveryAttempts=0;recoveryPosition=audio.currentTime}}
 function sessionEnded(){audio.pause();audio.removeAttribute('src');audio.load();metadataKey='';mediaArtworkData='';mediaArtworkType='';localStream='';outputStream='';currentTrack=null;resetCachedSpectrum();titleEl.textContent='Session ended';artistEl.textContent='Pair MarsAmp again from the BBS';albumEl.textContent='';showHint('Playback authorization ended.');bars(false);setMediaState('none')}
 function setMediaState(value){if('mediaSession' in navigator){try{navigator.mediaSession.playbackState=value}catch(error){}}}
 function remoteConnected(){return Boolean(audio.webkitCurrentPlaybackTargetIsWireless||(audio.remote&&audio.remote.state!=='disconnected'))}
@@ -1997,22 +2044,24 @@ function queueRow(track,index,current=false){const item=document.createElement('
 async function loadQueue(){try{const response=await fetch(BASE+'/api/queue',{cache:'no-store'});if(response.status===401){sessionEnded();return}if(!response.ok)throw new Error('queue unavailable');const data=await response.json();queueEl.replaceChildren();queueSummary.textContent=(data.label||'QUEUE')+' · '+Number(data.total||0).toLocaleString()+' tracks';
 if(data.dynamic){queueMeta.textContent='Full-library shuffle selects each next track directly from the live catalog.';if(data.current)queueEl.append(queueRow(data.current,0,true));const waiting=document.createElement('li');waiting.textContent='∞ Next selection is drawn when playback advances.';queueEl.append(waiting)}else{queueMeta.textContent=(data.mode||'sequential').toUpperCase()+' · upcoming playback order';if(data.current)queueEl.append(queueRow(data.current,0,true));(data.up_next||[]).forEach((track,index)=>queueEl.append(queueRow(track,index+1)))}
 }catch(error){queueSummary.textContent='QUEUE · temporarily unavailable'}}
-async function applyState(state){serverAction=state.action||'stop';localStream=state.stream||'';outputStream=state.output_stream||'';const track=state.track;if(track){titleEl.textContent=text(track.title)||'Untitled';artistEl.textContent=text(track.artist)||'Unknown artist';albumEl.textContent=text(track.album)||'The Mars Hotel collection';updateMetadata(track)}else if(serverAction==='stop'){titleEl.textContent='Playback stopped';artistEl.textContent='Choose a song in the BBS';albumEl.textContent='MarsAmp is ready'}showModeState(state);
-if(state.serial!==serial){serial=state.serial;if(state.action==='play'&&state.stream){const source=remoteConnected()&&outputStream?outputStream:localStream;if(!state.resume||!audio.src||!sameSource(source))audio.src=source;await beginPlayback()}else if(state.action==='pause')audio.pause();else if(state.action==='stop'){audio.pause();audio.removeAttribute('src');audio.load()}await loadQueue()}bars(!audio.paused);showOutputState()}
+async function applyState(state){serverAction=state.action||'stop';localStream=state.stream||'';outputStream=state.output_stream||'';const track=state.track;if(track){titleEl.textContent=text(track.title)||'Untitled';artistEl.textContent=text(track.artist)||'Unknown artist';albumEl.textContent=text(track.album)||'The Mars Hotel collection';updateMetadata(track)}else if(serverAction==='stop'){currentTrack=null;metadataKey='';mediaArtworkData='';mediaArtworkType='';resetCachedSpectrum();coverEl.src=ART512;titleEl.textContent='MarsAmp ready';artistEl.textContent='Choose a song in the BBS';albumEl.textContent='';document.title='MarsAmp';audio.pause();audio.removeAttribute('src');audio.load();elapsed.value='0:00';durationEl.value='0:00';seek.value=0}showModeState(state);
+if(state.serial!==serial){serial=state.serial;if(state.action==='play'&&state.stream){clearRecovery(true);const source=remoteConnected()&&outputStream?outputStream:localStream;if(!state.resume||!audio.src||!sameSource(source))audio.src=source;await beginPlayback()}else if(state.action==='pause'){clearRecovery();audio.pause();enable.textContent='▶ PLAY'}else if(state.action==='stop'){clearRecovery(true);audio.pause();const source=remoteConnected()&&outputStream?outputStream:localStream;if(track&&source&&!sameSource(source)){audio.src=source;audio.load()}try{audio.currentTime=0}catch(error){}updatePosition();enable.textContent='▶ PLAY';bars(false);setMediaState('paused')}await loadQueue()}bars(!audio.paused);showOutputState()}
 async function navigate(path,label,quiet=false){if(label)showHint(label);try{const response=await fetch(BASE+path,{method:'POST',credentials:'same-origin'});if(response.status===401){sessionEnded();return null}if(!response.ok)throw new Error('request failed');const state=await response.json();await applyState(state);if(quiet)hideHint();return state}catch(error){showHint('Unable to change songs. Check the connection.');return null}}
 async function poll(){try{const response=await fetch(BASE+'/api/state',{cache:'no-store'});if(response.status===401){sessionEnded();return}await applyState(await response.json());setTimeout(poll,750)}catch(error){setTimeout(poll,2000)}}
-enable.onclick=()=>serverAction==='pause'?navigate('/api/resume','Resuming playback…'):beginPlayback();document.getElementById('pause').onclick=()=>navigate('/api/pause','Pausing playback…');document.getElementById('stop').onclick=()=>navigate('/api/stop','Stopping playback…');
+function resumeOrPlay(){return (serverAction==='pause'||serverAction==='stop')&&currentTrack?navigate('/api/resume','',true):beginPlayback()}
+enable.onclick=resumeOrPlay;document.getElementById('pause').onclick=()=>navigate('/api/pause','',true);document.getElementById('stop').onclick=()=>navigate('/api/stop','',true);
 document.getElementById('previous').onclick=()=>navigate('/api/previous','Loading the previous song…');document.getElementById('next').onclick=()=>navigate('/api/advance','Loading the next song…');
 shuffle.onclick=async()=>{if(modeLocked){showHint('Full-library playback always shuffles.');return}const next=currentMode==='shuffle'?'sequential':'shuffle';const state=await navigate('/api/mode/'+next,'',true);if(state)await loadQueue()};
 mute.onclick=()=>{audio.muted=!audio.muted;try{localStorage.setItem('marsamp-muted',audio.muted?'1':'0')}catch(error){}showMuteState()};
 output.onclick=selectOutput;
 seek.addEventListener('input',()=>{if(Number.isFinite(audio.duration))audio.currentTime=audio.duration*Number(seek.value)/1000});
-audio.addEventListener('timeupdate',updatePosition);audio.addEventListener('durationchange',updatePosition);audio.addEventListener('loadedmetadata',refreshMetadata);audio.addEventListener('canplay',refreshMetadata);audio.addEventListener('playing',refreshMetadata);audio.addEventListener('volumechange',showMuteState);audio.addEventListener('play',()=>{refreshMetadata();enable.textContent='▶ PLAYING';bars(true);setMediaState('playing')});audio.addEventListener('pause',()=>{enable.textContent='▶ PLAY';bars(false);setMediaState('paused')});
+audio.addEventListener('timeupdate',()=>{updatePosition();mediaProgress()});audio.addEventListener('durationchange',updatePosition);audio.addEventListener('loadedmetadata',refreshMetadata);audio.addEventListener('canplay',()=>{refreshMetadata();mediaHealthy()});audio.addEventListener('playing',()=>{mediaHealthy();refreshMetadata()});audio.addEventListener('waiting',mediaStalled);audio.addEventListener('stalled',mediaStalled);audio.addEventListener('error',()=>{if(recoveryAllowed()){recoveryMessage('Reconnecting audio…');scheduleRecovery(true)}});audio.addEventListener('volumechange',showMuteState);audio.addEventListener('play',()=>{refreshMetadata();enable.textContent='▶ PLAYING';bars(true);setMediaState('playing')});audio.addEventListener('pause',()=>{enable.textContent='▶ PLAY';bars(false);setMediaState('paused')});
 audio.addEventListener('ended',()=>navigate('/api/advance','Loading the next song…'));document.getElementById('queue-panel').addEventListener('toggle',event=>{if(event.target.open)loadQueue()});
 audio.addEventListener('webkitplaybacktargetavailabilitychanged',event=>{output.disabled=event.availability==='not-available'&&!audio.remote;output.title=event.availability==='available'?'Choose an available AirPlay speaker':'No AirPlay speaker is currently visible';output.setAttribute('aria-label',output.title)});
 audio.addEventListener('webkitcurrentplaybacktargetiswirelesschanged',()=>{showOutputState();if(remoteConnected()&&currentTrack)requestCachedSpectrum(currentTrack);else if(!switchingOutput&&localStream)replaceSource(localStream,audio.currentTime,!audio.paused);bars(!audio.paused)});
+window.addEventListener('offline',()=>{if(recoveryAllowed())recoveryMessage('Connection interrupted. Audio will resume automatically.')});window.addEventListener('online',()=>{if(recoveryAllowed())scheduleRecovery(true)});
 if(audio.remote&&typeof audio.remote.watchAvailability==='function'){audio.remote.onconnecting=showOutputState;audio.remote.onconnect=()=>{showOutputState();if(currentTrack)requestCachedSpectrum(currentTrack);bars(!audio.paused)};audio.remote.ondisconnect=()=>{showOutputState();if(!switchingOutput&&localStream)replaceSource(localStream,audio.currentTime,!audio.paused);bars(!audio.paused)};audio.remote.watchAvailability(available=>{output.disabled=!available;output.title=available?'Choose an available remote speaker':'No compatible remote speaker is currently visible';output.setAttribute('aria-label',output.title)}).catch(()=>{output.disabled=false})}
-if('mediaSession' in navigator){const action=(name,handler)=>{try{navigator.mediaSession.setActionHandler(name,handler)}catch(error){}};action('play',()=>serverAction==='pause'?navigate('/api/resume','Resuming playback…'):beginPlayback());action('pause',()=>navigate('/api/pause','Pausing playback…'));action('stop',()=>navigate('/api/stop','Stopping playback…'));action('previoustrack',()=>navigate('/api/previous','Loading the previous song…'));action('nexttrack',()=>navigate('/api/advance','Loading the next song…'));action('seekbackward',details=>{audio.currentTime=Math.max(0,audio.currentTime-(details.seekOffset||10))});action('seekforward',details=>{audio.currentTime=Math.min(audio.duration||audio.currentTime,audio.currentTime+(details.seekOffset||10))});action('seekto',details=>{if(details.seekTime!=null)audio.currentTime=details.seekTime})}
+if('mediaSession' in navigator){const action=(name,handler)=>{try{navigator.mediaSession.setActionHandler(name,handler)}catch(error){}};action('play',resumeOrPlay);action('pause',()=>navigate('/api/pause','',true));action('stop',()=>navigate('/api/stop','',true));action('previoustrack',()=>navigate('/api/previous','Loading the previous song…'));action('nexttrack',()=>navigate('/api/advance','Loading the next song…'));action('seekbackward',details=>{audio.currentTime=Math.max(0,audio.currentTime-(details.seekOffset||10))});action('seekforward',details=>{audio.currentTime=Math.min(audio.duration||audio.currentTime,audio.currentTime+(details.seekOffset||10))});action('seekto',details=>{if(details.seekTime!=null)audio.currentTime=details.seekTime})}
 try{audio.muted=localStorage.getItem('marsamp-muted')==='1'}catch(error){}showMuteState();
 poll();
 </script></body></html>"""
@@ -2183,6 +2232,7 @@ class MusicHTTP(BaseHTTPRequestHandler):
             "X-MarsAmp-Bands": str(result["bands"]),
             "X-MarsAmp-Frames": str(result["frames"]),
             "X-MarsAmp-Interval-Ms": str(result["interval_ms"]),
+            "X-MarsAmp-Complete": "1" if result["complete"] else "0",
         }, cache_control="private, max-age=3600")
         self.wfile.write(payload)
 
