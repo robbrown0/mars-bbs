@@ -53,6 +53,11 @@ reports that an AirPlay or Cast target actually connected, preserving the
 current position across that route change. Cancelling the picker leaves local
 playback completely untouched.
 
+The Output control remains enabled while a remote route is connected. Some
+WebKit versions report that no additional targets are available after AirPlay
+connects; MarsAmp treats that signal as picker availability rather than as a
+disconnect, so the listener can still reopen Output or change the route.
+
 The browser control row places Mute, Shuffle, and Output directly beneath
 Play, Stop, and Next. Mute changes only the browser media element, preserves
 the current song and queue, exposes its state to assistive technology, and
