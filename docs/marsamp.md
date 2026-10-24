@@ -47,6 +47,17 @@ The selected speaker keeps the same MarsAmp queue, automatic next-track
 advance, shuffle, Back/Next buttons, and page controls. The page must remain
 open because it is still the queue controller.
 
+The browser equalizer is a real frequency spectrum when the browser supports
+non-invasive `HTMLMediaElement.captureStream()` audio capture. It samples a
+512-point FFT into 18 smoothed, low-frequency-weighted bands without changing
+the playback route or requesting a second copy of the song. Current Chromium
+browsers support that path. Safari/WebKit does not implement media-element
+capture, so iPhone, iPad and Safari show a stationary resting meter. MarsAmp
+deliberately does not reroute the primary player through Web Audio as a Safari
+fallback: doing so can suspend background or lock-screen playback and interfere
+with the native AirPlay path. AirPlay/Cast playback also rests the local meter
+because audio analysis is not performed on the remote receiver.
+
 Remote speakers do not receive the HTTP-only MarsAmp browser cookie. Instead,
 an authenticated state request issues a short-lived HMAC capability for the
 current, unchanged track. It exposes neither a NAS path nor account or server
@@ -82,7 +93,7 @@ The twentieth playlist, **Shuffle Everything**, is dynamic. It draws from every 
 
 The curated selections were evaluated against the [Rolling Stone 500 Greatest Songs](https://au.rollingstone.com/music/music-lists/best-songs-of-all-time-30065/), [Rolling Stone's 200 Best Songs of the 1980s](https://au.rollingstone.com/music/music-lists/200-best-songs-1980s-52935/), the [Library of Congress National Recording Registry](https://www.loc.gov/programs/national-recording-preservation-board/recording-registry/complete-national-recording-registry-listing/), and the recordings actually available on the configured libraries. They are editorial playlists rather than claims of a new numeric rating. The service resolves portable artist/title definitions against the current catalog after every scan. Missing recordings are omitted; it never substitutes a similarly named song or represents an unavailable selection as playable.
 
-The browser streams the original file and does not transcode it. MP3 and M4A make up most of the primary library and have broad browser support. FLAC works in current major browsers and AirPlay targets; individual Cast receivers may support a smaller codec set. WMA is cataloged but may not play in a browser or remote receiver. MarsAmp uses reviewed or usable embedded tags when available and conservative cleaned path-derived names otherwise. There is no gapless playback or visual audio analyzer.
+The browser streams the original file and does not transcode it. MP3 and M4A make up most of the primary library and have broad browser support. FLAC works in current major browsers and AirPlay targets; individual Cast receivers may support a smaller codec set. WMA is cataloged but may not play in a browser or remote receiver. MarsAmp uses reviewed or usable embedded tags when available and conservative cleaned path-derived names otherwise. There is no gapless playback.
 
 Sysops can inspect catalog state, add or remove approved additional locations, and request a rescan through **Administration → MarsAmp**. A rescan skips symbolic links, recycle/trash directories, unsupported extensions, and files that disappear during traversal. Missing sources are reported by source label without disclosing their host paths.
 
