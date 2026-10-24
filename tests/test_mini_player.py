@@ -118,6 +118,7 @@ class MiniPlayerTests(unittest.TestCase):
             self.assertEqual(operations[0], 'playlists')
             self.assertIn('search', operations)
             self.assertIn('all music', output.getvalue())
+            self.assertNotIn('NAS01 primary / UNR01 secondary', output.getvalue())
             self.assertEqual(ui._marsamp_view['browse'], 'all')
         finally:
             ui._marsamp_view.clear()
