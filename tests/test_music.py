@@ -310,8 +310,13 @@ class MusicTests(unittest.TestCase):
         self.assertIn('id="output-label"', page)
         self.assertIn('class="utility"', page)
         self.assertIn('>OUTPUT</span>', page)
+        self.assertIn('id="shuffle"', page)
+        self.assertIn('class="shuffle-glyph"', page)
+        self.assertIn('/api/mode/', page)
+        self.assertIn("shuffle.setAttribute('aria-pressed'", page)
         self.assertNotIn('class="output-copy"', page)
         self.assertNotIn('PLAY ON ANOTHER SPEAKER', page)
+        self.assertNotIn('Keep this page open while controlling MarsAmp', page)
         self.assertIn('● SECURE</div>', page)
         self.assertNotIn('SECURE AUDIO LINK', page)
         self.assertIn('x-webkit-airplay="allow"', page)
@@ -794,6 +799,20 @@ class MusicTests(unittest.TestCase):
                 self.assertEqual(queue_view["current"]["id"], queue[0])
                 self.assertEqual(queue_view["up_next"][0]["id"], queue[1])
                 self.assertNotIn("relative_path", repr(queue_view))
+
+                for endpoint, expected in (("mode/shuffle", "shuffle"),
+                                           ("mode/sequential", "sequential")):
+                    connection = http.client.HTTPConnection(
+                        "127.0.0.1", server.server_port, timeout=3)
+                    connection.request("POST", f"/marsamp/api/{endpoint}", headers={
+                        "Cookie": "marsamp_session=" + browser,
+                        "Origin": "https://bbs.example.test",
+                    })
+                    response = connection.getresponse()
+                    payload = response.read()
+                    connection.close()
+                    self.assertEqual(response.status, 200)
+                    self.assertEqual(json.loads(payload)["mode"], expected)
 
                 for endpoint, action in (("pause", "pause"), ("resume", "play")):
                     connection = http.client.HTTPConnection(
