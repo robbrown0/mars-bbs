@@ -5631,8 +5631,7 @@ def marsamp(token: str) -> None:
         _marsamp_view.update(query=query, playlist=playlist_slug,
                              playlist_name=playlist_name, cursor=cursor, mode=mode,
                              track_id=current_track, browse=browse)
-        heading("MARSAMP 0.1", "NAS01 primary / UNR01 secondary",
-                str(state.get("action", "stop")).upper())
+        heading("MARSAMP 0.1", right=str(state.get("action", "stop")).upper())
         if isinstance(current, dict):
             artist = safe_text(current.get("artist", ""))
             title = safe_text(current.get("title", "Untitled"))
