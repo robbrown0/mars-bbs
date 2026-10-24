@@ -444,3 +444,26 @@ Validated on 2026-10-24 for preauthorized AirPlay track changes:
   `mars-v2final-music-rollback-pre-airplay-preauthorized-skip-20261024`
 - the consistent pre-deployment database snapshot SHA-256 is
   `a75da184116f88f84ce56e687394ed94dc54090c55f6a0f6570de1389794479a`
+
+Validated on 2026-10-24 for Safari/AirPlay navigation race recovery:
+
+- all 82 tests passed in an isolated, network-disabled, read-only container;
+  the generated player JavaScript passed Node syntax validation
+- browser state serials are monotonic, so an older 750 ms poll response cannot
+  arrive after Next and restore an earlier track or source
+- interrupted/superseded play promises retry as buffering; only Safari's
+  explicit `NotAllowedError` displays the one-tap Play request
+- temporary AirPlay/Remote Playback disconnect notifications no longer replace
+  the active source while the route and next track are being negotiated
+- deployed image is
+  `sha256:f1f413e59d9fd74757e3b97a6e6eea24d2a505103f30079e4fed4a0ce85ccb51`;
+  deployed `musicd.py` SHA-256 is
+  `73f7bb213ab2def5fb7a245cc72f6d8f9dee0f4adeb46008d3ab631630e66456`
+- production is healthy with zero restarts, database integrity OK and 27,486
+  available tracks; non-root, read-only, dropped-capability,
+  `no-new-privileges` and loopback-only restrictions remain in place;
+  unauthenticated state remains HTTP 401
+- the prior production container is preserved, stopped, as
+  `mars-v2final-music-rollback-pre-airplay-state-race-20261024`
+- the consistent pre-deployment database snapshot SHA-256 is
+  `0477511cb485adf8ef67c13b73b66986a8ad13dd9ab33b7f8fca17e95ad68ab4`

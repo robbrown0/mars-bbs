@@ -137,6 +137,14 @@ This avoids requiring another Play tap after a network round trip. Shuffle
 choices are fixed in advance so the preauthorized stream and authoritative
 queue transition cannot disagree.
 
+Browser state serials are applied monotonically. A polling response that began
+before a Back/Next command cannot arrive later and roll the media element back
+to an older song. MarsAmp also distinguishes Safari's genuine `NotAllowedError`
+from an interrupted or superseded media load: only the former asks for a Play
+tap, while transient loads retry as buffering. AirPlay route notifications are
+allowed to settle without rewriting the current media URL, preventing a brief
+route-state change from aborting a track transition.
+
 The audio element requests the browser's native adaptive buffer for each song.
 When a connection stalls, MarsAmp waits for the browser to recover naturally,
 using a longer grace period on Save-Data and slow links. If playback still
