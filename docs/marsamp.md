@@ -127,11 +127,15 @@ The browser's **PLAY** button can therefore start that stopped selection again,
 including after the player page is refreshed. Successful play, pause and stop
 commands stay visually quiet; connection and playback errors remain visible.
 On browsers with strict media policies, including iOS with an AirPlay route,
-the Play, Back and Next controls invoke the media element synchronously within
-the tap before synchronizing Resume or the replacement track with the server.
-Lock-screen Previous/Next use the same path. This preserves the single user
-gesture needed to start audible playback instead of requiring a second tap
-after the network request.
+the server includes the exact previous and upcoming queue selections in each
+authenticated state response. Each carries a short-lived, one-track playback
+capability but no path, account credential, or reusable catalog access. Play,
+Back and Next can therefore select the already-authorized stream and invoke the
+media element synchronously within the tap before synchronizing Resume or the
+replacement track with the server. Lock-screen Previous/Next use the same path.
+This avoids requiring another Play tap after a network round trip. Shuffle
+choices are fixed in advance so the preauthorized stream and authoritative
+queue transition cannot disagree.
 
 The audio element requests the browser's native adaptive buffer for each song.
 When a connection stalls, MarsAmp waits for the browser to recover naturally,

@@ -419,3 +419,28 @@ one-tap AirPlay track changes:
   `mars-v2final-music-rollback-pre-lockscreen-controls-20261024`
 - the consistent pre-deployment database snapshot SHA-256 is
   `cbc94ccf3c920d824f9a405ffac8eaec3b5a395e6a8d02b0f69f7f36798c9779`
+
+Validated on 2026-10-24 for preauthorized AirPlay track changes:
+
+- all 82 tests passed in an isolated, network-disabled, read-only container;
+  the generated player JavaScript passed Node syntax validation
+- each authenticated state response carries exact previous/next stream URLs;
+  shuffle and dynamic full-library choices are fixed server-side before use,
+  and tests verify that the later authoritative transition selects that track
+- browser and lock-screen Previous/Next set the already-authorized local or
+  remote stream and invoke playback synchronously inside the initiating action,
+  before the command request or its response
+- navigation capabilities are short-lived and restricted to one unchanged
+  track; they disclose no NAS path, account credential, or catalog authority
+- deployed image is
+  `sha256:e1afe105163e88142a50d2163e57995cab6c3c229a92ec35542cfc9fdda3d9b1`;
+  deployed `musicd.py` SHA-256 is
+  `df0d57a7a0476da847e84d9651c9eebbbf27f7ff4590152ed4559a0f8d646eac`
+- production is healthy with zero restarts, database integrity OK and 27,486
+  available tracks; non-root, read-only, dropped-capability,
+  `no-new-privileges` and loopback-only restrictions remain in place;
+  unauthenticated state remains HTTP 401
+- the prior production container is preserved, stopped, as
+  `mars-v2final-music-rollback-pre-airplay-preauthorized-skip-20261024`
+- the consistent pre-deployment database snapshot SHA-256 is
+  `a75da184116f88f84ce56e687394ed94dc54090c55f6a0f6570de1389794479a`

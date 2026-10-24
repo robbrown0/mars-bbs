@@ -378,13 +378,18 @@ class MusicTests(unittest.TestCase):
         self.assertLess(resume.index("beginPlayback()"),
                         resume.index("navigate('/api/resume'"))
         self.assertIn("Promise.all([playback,command])", resume)
-        self.assertIn("async function skipTrack(path,label)", page)
-        skip = page.split("async function skipTrack(path,label)", 1)[1].split(
+        self.assertIn("async function skipTrack(path,label,direction)", page)
+        skip = page.split("async function skipTrack(path,label,direction)", 1)[1].split(
             "enable.onclick", 1)[0]
-        self.assertLess(skip.index("beginPlayback()"), skip.index("navigate(path,label)"))
+        self.assertLess(skip.index("audio.src=source"), skip.index("navigate(path,''"))
+        self.assertLess(skip.index("beginPlayback()"), skip.index("navigate(path,''"))
         self.assertIn("Promise.all([playback,command])", skip)
+        self.assertIn("previousStream=previous.stream||''", page)
+        self.assertIn("nextOutputStream=next.output_stream||''", page)
         self.assertIn("onclick=()=>skipTrack('/api/previous'", page)
+        self.assertIn("'previous')", page)
         self.assertIn("onclick=()=>skipTrack('/api/advance'", page)
+        self.assertIn("'next')", page)
         self.assertIn("action('previoustrack',()=>skipTrack('/api/previous'", page)
         self.assertIn("action('nexttrack',()=>skipTrack('/api/advance'", page)
         self.assertIn("!enable.classList.contains('attention')", page)
@@ -454,11 +459,19 @@ class MusicTests(unittest.TestCase):
             }), (1, 29901, 29901))
         self.assertEqual(state["mode"], "sequential")
         self.assertNotIn("queue", state)
+        self.assertEqual(state["navigation"]["next"]["id"], queue[0])
+        self.assertEqual(state["navigation"]["previous"]["id"], queue[-2])
+        self.assertRegex(state["navigation"]["next"]["output_stream"],
+                         r"^/marsamp/stream/[0-9]+/[0-9a-f]{16}/")
         advanced = self.music.advance(IDENTITY["account_id"])
         self.assertEqual(advanced["track_id"], queue[0])
-        self.music.set_mode(IDENTITY["account_id"], "shuffle")
+        shuffled = self.music.set_mode(IDENTITY["account_id"], "shuffle")
+        expected_next = shuffled["navigation"]["next"]["id"]
         first = self.music.advance(IDENTITY["account_id"])
+        self.assertEqual(first["track_id"], expected_next)
+        second_expected = first["navigation"]["next"]["id"]
         second = self.music.advance(IDENTITY["account_id"])
+        self.assertEqual(second["track_id"], second_expected)
         self.assertNotEqual(first["track_id"], queue[0])
         self.assertNotEqual(second["track_id"], first["track_id"])
         self.assertEqual({first["track_id"], second["track_id"]}, set(queue[1:]))
@@ -547,7 +560,9 @@ class MusicTests(unittest.TestCase):
         self.assertEqual(opened["total"], 3)
         self.assertEqual(opened["playlist"]["dynamic"], "all")
         self.assertEqual(state["mode"], "shuffle")
+        expected_next = state["navigation"]["next"]["id"]
         advanced = self.music.advance(IDENTITY["account_id"])
+        self.assertEqual(advanced["track_id"], expected_next)
         self.assertNotEqual(advanced["track_id"], first["id"])
         queue = self.music.queue_view(IDENTITY["account_id"])
         self.assertEqual(queue["dynamic"], "all")

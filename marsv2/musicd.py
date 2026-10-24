@@ -1453,6 +1453,7 @@ class Music:
         return ident
 
     def state(self, account_id: int) -> dict[str, object]:
+        previous_id, next_id = self._navigation_ids(account_id)
         with self.lock:
             state = dict(self.playback.get(account_id, {
                 "serial": 0, "action": "stop", "track_id": 0,
@@ -1468,6 +1469,19 @@ class Music:
                 state["output_stream"] = self.stream_capability(track_id)
             except RPCError:
                 state.update({"action": "stop", "track_id": 0})
+        navigation: dict[str, object] = {}
+        for direction, candidate in (("previous", previous_id), ("next", next_id)):
+            if not candidate:
+                continue
+            try:
+                navigation[direction] = {
+                    "id": candidate,
+                    "stream": f"{self.base_path}/audio/{candidate}",
+                    "output_stream": self.stream_capability(candidate),
+                }
+            except RPCError:
+                continue
+        state["navigation"] = navigation
         state["compact_player_lines"] = self.player_layout()
         state["browser_active"] = self.browser_active(account_id)
         state.pop("queue", None)
@@ -1673,6 +1687,61 @@ class Music:
             raise RPCError("music catalog is empty")
         return int(row["id"])
 
+    def _navigation_ids(self, account_id: int) -> tuple[int, int]:
+        """Return stable, server-authoritative previous/next preload targets."""
+        with self.lock:
+            current = self.playback.get(account_id)
+            if (not current or current.get("action") not in ("play", "pause")
+                    or not current.get("track_id")):
+                return 0, 0
+            track_id = int(current["track_id"])
+            history = [int(value) for value in current.get("history", [])
+                       if isinstance(value, int)]
+            scope = str(current.get("scope", ""))
+            if self.dynamic_playlists.get(scope) == DYNAMIC_ALL:
+                changed = False
+                previous_id = history[-1] if history else int(
+                    current.get("navigation_previous", 0) or 0)
+                if not history and not self._available_queue([previous_id]):
+                    previous_id = self._random_available(history + [track_id])
+                    current["navigation_previous"] = previous_id
+                    changed = True
+                next_id = int(current.get("navigation_next", 0) or 0)
+                if not self._available_queue([next_id]):
+                    next_id = self._random_available(
+                        history + [track_id, previous_id])
+                    current["navigation_next"] = next_id
+                    changed = True
+                if changed:
+                    self._save_playback(account_id)
+                return previous_id, next_id
+
+            queue = self._available_queue(current.get("queue", []))
+            if not queue:
+                return 0, 0
+            history = [value for value in history if value in queue]
+            if history:
+                previous_id = history[-1]
+            else:
+                try:
+                    previous_id = queue[(queue.index(track_id) - 1) % len(queue)]
+                except ValueError:
+                    previous_id = queue[-1]
+            if str(current.get("mode", "sequential")) == "shuffle" and len(queue) > 1:
+                bag = [int(value) for value in current.get("shuffle_bag", [])
+                       if int(value) in queue and int(value) != track_id]
+                if not bag:
+                    bag = self._shuffled(queue, track_id)
+                    current["shuffle_bag"] = bag
+                    self._save_playback(account_id)
+                next_id = bag[-1]
+            else:
+                try:
+                    next_id = queue[(queue.index(track_id) + 1) % len(queue)]
+                except ValueError:
+                    next_id = queue[0]
+            return previous_id, next_id
+
     def _move(self, account_id: int, backwards: bool = False) -> dict[str, object]:
         with self.lock:
             current = self.playback.get(account_id)
@@ -1684,10 +1753,22 @@ class Music:
                            if isinstance(value, int)]
                 if backwards and history:
                     selected = history.pop()
+                elif backwards and self._available_queue([
+                        int(current.get("navigation_previous", 0) or 0)]):
+                    selected = int(current["navigation_previous"])
+                    if track_id:
+                        history.append(track_id)
+                elif not backwards and self._available_queue([
+                        int(current.get("navigation_next", 0) or 0)]):
+                    selected = int(current["navigation_next"])
+                    if track_id:
+                        history.append(track_id)
                 else:
                     selected = self._random_available(history + [track_id])
                     if track_id:
                         history.append(track_id)
+                current.pop("navigation_previous", None)
+                current.pop("navigation_next", None)
                 current.update({
                     "serial": int(current.get("serial", 0)) + 1,
                     "action": "play", "resume": False, "track_id": selected,
@@ -1731,6 +1812,8 @@ class Music:
                 "action": "play", "resume": False, "track_id": selected,
                 "queue": queue, "history": history[-MAX_RESULTS:],
             })
+            current.pop("navigation_previous", None)
+            current.pop("navigation_next", None)
             self._save_playback(account_id)
         return self.state(account_id)
 
@@ -1993,7 +2076,7 @@ const output=document.getElementById('output'),outputLabel=document.getElementBy
 const shuffle=document.getElementById('shuffle'),shuffleLabel=document.getElementById('shuffle-label');
 const mute=document.getElementById('mute'),muteLabel=document.getElementById('mute-label');
 const coverEl=document.getElementById('cover');coverEl.onerror=()=>{if(coverEl.src!==ART512)coverEl.src=ART512};
-let enabled=false,serial=-1,currentTrack=null,serverAction='stop',currentMode='sequential',modeLocked=false,metadataKey='',mediaArtworkData='',mediaArtworkType='',localStream='',outputStream='',switchingOutput=false;
+let enabled=false,serial=-1,currentTrack=null,serverAction='stop',currentMode='sequential',modeLocked=false,metadataKey='',mediaArtworkData='',mediaArtworkType='',localStream='',outputStream='',previousStream='',previousOutputStream='',nextStream='',nextOutputStream='',switchingOutput=false;
 let spectrumContext=null,spectrumSource=null,spectrumAnalyser=null,spectrumData=null,spectrumFrame=0,spectrumStarting=false,spectrumUnavailable=false,cachedSpectrum=null,cachedSpectrumTrack=0,cachedSpectrumTimer=0,cachedSpectrumAttempts=0;
 let stallTimer=0,recoveryTimer=0,recoveryNoticeTimer=0,recoveryAttempts=0,recoveryPosition=0,recoveryNotice=false;
 for(let i=0;i<18;i++)meter.appendChild(document.createElement('i'));
@@ -2045,25 +2128,25 @@ function queueRow(track,index,current=false){const item=document.createElement('
 async function loadQueue(){try{const response=await fetch(BASE+'/api/queue',{cache:'no-store'});if(response.status===401){sessionEnded();return}if(!response.ok)throw new Error('queue unavailable');const data=await response.json();queueEl.replaceChildren();queueSummary.textContent=(data.label||'QUEUE')+' · '+Number(data.total||0).toLocaleString()+' tracks';
 if(data.dynamic){queueMeta.textContent='Full-library shuffle selects each next track directly from the live catalog.';if(data.current)queueEl.append(queueRow(data.current,0,true));const waiting=document.createElement('li');waiting.textContent='∞ Next selection is drawn when playback advances.';queueEl.append(waiting)}else{queueMeta.textContent=(data.mode||'sequential').toUpperCase()+' · upcoming playback order';if(data.current)queueEl.append(queueRow(data.current,0,true));(data.up_next||[]).forEach((track,index)=>queueEl.append(queueRow(track,index+1)))}
 }catch(error){queueSummary.textContent='QUEUE · temporarily unavailable'}}
-async function applyState(state){serverAction=state.action||'stop';localStream=state.stream||'';outputStream=state.output_stream||'';const track=state.track;if(track){titleEl.textContent=text(track.title)||'Untitled';artistEl.textContent=text(track.artist)||'Unknown artist';albumEl.textContent=text(track.album)||'The Mars Hotel collection';updateMetadata(track)}else if(serverAction==='stop'){currentTrack=null;metadataKey='';mediaArtworkData='';mediaArtworkType='';resetCachedSpectrum();coverEl.src=ART512;titleEl.textContent='MarsAmp ready';artistEl.textContent='Choose a song in the BBS';albumEl.textContent='';document.title='MarsAmp';audio.pause();audio.removeAttribute('src');audio.load();elapsed.value='0:00';durationEl.value='0:00';seek.value=0}showModeState(state);
+async function applyState(state){serverAction=state.action||'stop';localStream=state.stream||'';outputStream=state.output_stream||'';const navigation=state.navigation||{},previous=navigation.previous||{},next=navigation.next||{};previousStream=previous.stream||'';previousOutputStream=previous.output_stream||'';nextStream=next.stream||'';nextOutputStream=next.output_stream||'';const track=state.track;if(track){titleEl.textContent=text(track.title)||'Untitled';artistEl.textContent=text(track.artist)||'Unknown artist';albumEl.textContent=text(track.album)||'The Mars Hotel collection';updateMetadata(track)}else if(serverAction==='stop'){currentTrack=null;metadataKey='';mediaArtworkData='';mediaArtworkType='';resetCachedSpectrum();coverEl.src=ART512;titleEl.textContent='MarsAmp ready';artistEl.textContent='Choose a song in the BBS';albumEl.textContent='';document.title='MarsAmp';audio.pause();audio.removeAttribute('src');audio.load();elapsed.value='0:00';durationEl.value='0:00';seek.value=0}showModeState(state);
 if(state.serial!==serial){serial=state.serial;if(state.action==='play'&&state.stream){clearRecovery(true);const source=remoteConnected()&&outputStream?outputStream:localStream;if(!state.resume||!audio.src||!sameSource(source))audio.src=source;await beginPlayback()}else if(state.action==='pause'){clearRecovery();audio.pause();enable.textContent='▶ PLAY'}else if(state.action==='stop'){clearRecovery(true);audio.pause();const source=remoteConnected()&&outputStream?outputStream:localStream;if(track&&source&&!sameSource(source)){audio.src=source;audio.load()}try{audio.currentTime=0}catch(error){}updatePosition();enable.textContent='▶ PLAY';bars(false);setMediaState('paused')}await loadQueue()}bars(!audio.paused);showOutputState()}
 async function navigate(path,label,quiet=false){if(label)showHint(label);try{const response=await fetch(BASE+path,{method:'POST',credentials:'same-origin'});if(response.status===401){sessionEnded();return null}if(!response.ok)throw new Error('request failed');const state=await response.json();await applyState(state);if(quiet&&!enable.classList.contains('attention')&&!recoveryNotice)hideHint();return state}catch(error){showHint('Unable to change songs. Check the connection.');return null}}
 async function poll(){try{const response=await fetch(BASE+'/api/state',{cache:'no-store'});if(response.status===401){sessionEnded();return}await applyState(await response.json());setTimeout(poll,750)}catch(error){setTimeout(poll,2000)}}
 async function resumeOrPlay(){if((serverAction==='pause'||serverAction==='stop')&&currentTrack){const playback=beginPlayback(),command=navigate('/api/resume','',true),results=await Promise.all([playback,command]);return results[1]}return beginPlayback()}
-async function skipTrack(path,label){const playback=beginPlayback(),command=navigate(path,label),results=await Promise.all([playback,command]);return results[1]}
+async function skipTrack(path,label,direction){const backwards=direction==='previous',local=backwards?previousStream:nextStream,remote=backwards?previousOutputStream:nextOutputStream,source=remoteConnected()?(remote||local):local;if(source){showHint(label);clearRecovery(true);serverAction='play';audio.src=source;const playback=beginPlayback(),command=navigate(path,'');const results=await Promise.all([playback,command]);return results[1]}const playback=beginPlayback(),command=navigate(path,label),results=await Promise.all([playback,command]);return results[1]}
 enable.onclick=resumeOrPlay;document.getElementById('pause').onclick=()=>navigate('/api/pause','',true);document.getElementById('stop').onclick=()=>navigate('/api/stop','',true);
-document.getElementById('previous').onclick=()=>skipTrack('/api/previous','Loading the previous song…');document.getElementById('next').onclick=()=>skipTrack('/api/advance','Loading the next song…');
+document.getElementById('previous').onclick=()=>skipTrack('/api/previous','Loading the previous song…','previous');document.getElementById('next').onclick=()=>skipTrack('/api/advance','Loading the next song…','next');
 shuffle.onclick=async()=>{if(modeLocked){showHint('Full-library playback always shuffles.');return}const next=currentMode==='shuffle'?'sequential':'shuffle';const state=await navigate('/api/mode/'+next,'',true);if(state)await loadQueue()};
 mute.onclick=()=>{audio.muted=!audio.muted;try{localStorage.setItem('marsamp-muted',audio.muted?'1':'0')}catch(error){}showMuteState()};
 output.onclick=selectOutput;
 seek.addEventListener('input',()=>{if(Number.isFinite(audio.duration))audio.currentTime=audio.duration*Number(seek.value)/1000});
 audio.addEventListener('timeupdate',()=>{updatePosition();mediaProgress()});audio.addEventListener('durationchange',updatePosition);audio.addEventListener('loadedmetadata',refreshMetadata);audio.addEventListener('canplay',()=>{refreshMetadata();mediaHealthy()});audio.addEventListener('playing',()=>{mediaHealthy();refreshMetadata()});audio.addEventListener('waiting',mediaStalled);audio.addEventListener('stalled',mediaStalled);audio.addEventListener('error',()=>{if(recoveryAllowed()){recoveryMessage('Reconnecting audio…');scheduleRecovery(true)}});audio.addEventListener('volumechange',showMuteState);audio.addEventListener('play',()=>{refreshMetadata();enable.textContent='▶ PLAYING';bars(true);setMediaState('playing')});audio.addEventListener('pause',()=>{enable.textContent='▶ PLAY';bars(false);setMediaState('paused')});
-audio.addEventListener('ended',()=>navigate('/api/advance','Loading the next song…'));document.getElementById('queue-panel').addEventListener('toggle',event=>{if(event.target.open)loadQueue()});
+audio.addEventListener('ended',()=>skipTrack('/api/advance','Loading the next song…','next'));document.getElementById('queue-panel').addEventListener('toggle',event=>{if(event.target.open)loadQueue()});
 audio.addEventListener('webkitplaybacktargetavailabilitychanged',event=>{output.disabled=event.availability==='not-available'&&!remoteConnected()&&!audio.remote;showOutputState()});
 audio.addEventListener('webkitcurrentplaybacktargetiswirelesschanged',()=>{showOutputState();if(remoteConnected())activateRemoteOutput();else if(!switchingOutput&&localStream)replaceSource(localStream,audio.currentTime,!audio.paused);bars(!audio.paused)});
 window.addEventListener('offline',()=>{if(recoveryAllowed())recoveryMessage('Connection interrupted. Audio will resume automatically.')});window.addEventListener('online',()=>{if(recoveryAllowed())scheduleRecovery(true)});
 if(audio.remote&&typeof audio.remote.watchAvailability==='function'){audio.remote.onconnecting=showOutputState;audio.remote.onconnect=()=>{showOutputState();activateRemoteOutput();bars(!audio.paused)};audio.remote.ondisconnect=()=>{showOutputState();if(!switchingOutput&&localStream)replaceSource(localStream,audio.currentTime,!audio.paused);bars(!audio.paused)};audio.remote.watchAvailability(available=>{output.disabled=!available&&!remoteConnected();showOutputState()}).catch(()=>{output.disabled=false})}
-if('mediaSession' in navigator){const action=(name,handler)=>{try{navigator.mediaSession.setActionHandler(name,handler)}catch(error){}};action('play',resumeOrPlay);action('pause',()=>navigate('/api/pause','',true));action('stop',()=>navigate('/api/stop','',true));action('previoustrack',()=>skipTrack('/api/previous','Loading the previous song…'));action('nexttrack',()=>skipTrack('/api/advance','Loading the next song…'));action('seekbackward',null);action('seekforward',null);action('seekto',details=>{if(details.seekTime!=null)audio.currentTime=details.seekTime})}
+if('mediaSession' in navigator){const action=(name,handler)=>{try{navigator.mediaSession.setActionHandler(name,handler)}catch(error){}};action('play',resumeOrPlay);action('pause',()=>navigate('/api/pause','',true));action('stop',()=>navigate('/api/stop','',true));action('previoustrack',()=>skipTrack('/api/previous','Loading the previous song…','previous'));action('nexttrack',()=>skipTrack('/api/advance','Loading the next song…','next'));action('seekbackward',null);action('seekforward',null);action('seekto',details=>{if(details.seekTime!=null)audio.currentTime=details.seekTime})}
 try{audio.muted=localStorage.getItem('marsamp-muted')==='1'}catch(error){}showMuteState();
 poll();
 </script></body></html>"""
