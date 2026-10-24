@@ -121,6 +121,11 @@ The browser player also provides **BACK** and **FORWARD** buttons. They use the 
 The browser's **PLAY** button can therefore start that stopped selection again,
 including after the player page is refreshed. Successful play, pause and stop
 commands stay visually quiet; connection and playback errors remain visible.
+On browsers with strict media policies, including iOS with an AirPlay route,
+the Play button invokes the media element synchronously within the tap before
+it synchronizes Resume with the server. This preserves the single user gesture
+needed to start audible playback instead of requiring a second tap after the
+network request.
 
 The audio element requests the browser's native adaptive buffer for each song.
 When a connection stalls, MarsAmp waits for the browser to recover naturally,

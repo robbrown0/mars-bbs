@@ -348,3 +348,27 @@ Validated on 2026-10-24 for interruption-free Output picker opening:
   `mars-v2final-music-rollback-pre-output-picker-no-dip-20261024`
 - the consistent pre-deployment database snapshot SHA-256 is
   `9af12817b6dd5078b0b202f2158619e4c6496ec658a7ff2f519ca9bf9987a9d9`
+
+Validated on 2026-10-24 for one-tap playback with an active AirPlay route:
+
+- all 82 tests passed in an isolated, network-disabled, read-only container;
+  the generated player JavaScript passed Node syntax validation
+- when a stopped or paused selection is started from the browser, the player
+  now invokes `audio.play()` synchronously inside the user's tap before sending
+  the Resume request, preserving iOS/WebKit media activation across AirPlay
+- the server Resume and immediate browser playback run together; the returned
+  state still authoritatively synchronizes the queue and playback state
+- an autoplay/AirPlay rejection keeps the highlighted Play prompt visible
+  instead of allowing a quiet successful server request to hide it
+- deployed image is
+  `sha256:a00998c801097873125b59790e0f6d1d0dd33ec8834ae74f531e7c3f799a4ccf`;
+  deployed `musicd.py` SHA-256 is
+  `59eb73e5d825fbaae06baa3f19ca9c9af022b97271a110a6d8ed2f5ac4d69a9b`
+- production is healthy with zero restarts and database integrity OK; the
+  startup scan reports 26,178 currently available tracks
+- non-root, read-only, dropped-capability, `no-new-privileges` and loopback-only
+  restrictions remain in place; unauthenticated state remains HTTP 401
+- the prior production container is preserved, stopped, as
+  `mars-v2final-music-rollback-pre-airplay-one-tap-20261024`
+- the consistent pre-deployment database snapshot SHA-256 is
+  `3cda36e47c7e8ee9ab9383f9a9e463cc299cd2060da7d641635f2c79d300c427`
