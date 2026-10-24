@@ -74,8 +74,8 @@
   {
     "service": "music",
     "container": "mars-v2final-music",
-    "image": "sha256:c40f354003fa8855d7fadf9769d303890a22a69960cde900939d3f2457f249e4",
-    "tag": "mars-hotel-v2-service:shuffle-labels-20261024",
+    "image": "sha256:945541e50bf0032e8ef2551864f44a6d5316d7e511cabc8a18511434964d56e1",
+    "tag": "mars-hotel-v2-service:player-controls-polish-20261024",
     "user": "21012:21012",
     "running": true,
     "read_only": true

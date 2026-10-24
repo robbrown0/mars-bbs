@@ -212,3 +212,22 @@ Validated on 2026-10-24 for quiet shuffle states and playlist-aware queues:
   `ef895f40490fe9f1e57ee3e93b417bb7728fcea3506756533d3a7e4a6690bf87`
 - the SSH host-key fingerprint remained
   `SHA256:f46r4okVd7RLfofExvWW5XsM0od7ra4s0eVq6sPon0w`
+
+Validated on 2026-10-24 for aligned browser-player options:
+
+- all 80 unit tests passed in an isolated, network-disabled container
+- the Shuffle and Cast controls now use the same five-column grid as the
+  transport row, centered directly beneath Stop and Next respectively
+- the five-column transport layout is retained on narrow phones so the two
+  option controls remain aligned at every supported viewport width
+- opening the native AirPlay or Cast picker no longer displays redundant
+  instructional text; precondition, unsupported-browser and picker errors
+  remain visible
+- deployed `musicd.py` SHA-256 is
+  `05fb6bdbd5308e86dafa6ee84d482467f5c8655ad2e9b0e2b6721eec1ad47b2e`
+- the replacement music service is healthy with zero restarts and retains its
+  non-root user, read-only root, dropped capabilities, `no-new-privileges` and
+  loopback-only HTTP binding
+- database integrity remained OK with 26,075 tracks; the consistent
+  pre-deployment snapshot SHA-256 is
+  `6520d938fece429705040e9ae7bcb831effa6a724cf9bb08590ecead4cd6bdb1`
