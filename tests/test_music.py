@@ -285,6 +285,8 @@ class MusicTests(unittest.TestCase):
         self.assertIn("await audio.play()", page)
         self.assertIn("Your browser blocked automatic audio", page)
         self.assertIn("classList.add('attention')", page)
+        self.assertIn("function hideHint(){hint.hidden=true", page)
+        self.assertNotIn("Audio enabled. MarsAmp will continue", page)
         self.assertIn("/api/advance", page)
         self.assertIn("/api/previous", page)
         self.assertIn('id="previous"', page)
