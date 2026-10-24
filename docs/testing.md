@@ -185,3 +185,30 @@ Validated on 2026-10-24 for numbered playlists and browser-player refinement:
   `SHA256:f46r4okVd7RLfofExvWW5XsM0od7ra4s0eVq6sPon0w`
 - the consistent pre-deployment database snapshot SHA-256 is
   `f3cfd67c663f1dc151fc652aab045cee3be8963aa92acd7749f9273d05c03cee`
+
+Validated on 2026-10-24 for quiet shuffle states and playlist-aware queues:
+
+- all 80 unit tests and all 14 recovered model suites passed in isolated,
+  network-disabled containers; generated browser JavaScript passed Node syntax
+  validation
+- the browser toggle reports only `SHUFFLE ON` or `SHUFFLE OFF`; successful
+  changes no longer open a redundant status message, while failures and the
+  full-library shuffle-only explanation remain visible
+- the queue heading shows a curated playlist name only when the server verifies
+  that the ordered available track IDs exactly match that playlist; searches
+  and custom queues retain the `Current queue` fallback
+- the terminal MarsAmp heading no longer displays NAS01/UNR01 priority; both
+  storage sources and administrator source management remain unchanged
+- deployed `musicd.py` SHA-256 is
+  `c4358de71bb194d5a3971c0ae37d5198ab9a06d268dd3789138035076684bc4b`
+  and deployed `ui.py` SHA-256 is
+  `744bed67eadcd945b8bbe73b336c6964e747354f3acbee554f863406842d9425`
+- music and gateway replacements remained healthy/running with zero restarts,
+  read-only roots, all capabilities dropped and `no-new-privileges`; the
+  public manifest returned HTTP 200 and unauthenticated state/mode requests
+  returned HTTP 401
+- database integrity remained OK with 26,075 tracks and 853 curated entries;
+  the consistent pre-deployment snapshot SHA-256 is
+  `ef895f40490fe9f1e57ee3e93b417bb7728fcea3506756533d3a7e4a6690bf87`
+- the SSH host-key fingerprint remained
+  `SHA256:f46r4okVd7RLfofExvWW5XsM0od7ra4s0eVq6sPon0w`
