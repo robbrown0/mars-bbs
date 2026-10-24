@@ -350,6 +350,12 @@ class MusicTests(unittest.TestCase):
         self.assertIn('x-webkit-airplay="allow"', page)
         self.assertIn("webkitShowPlaybackTargetPicker", page)
         self.assertIn("audio.remote.prompt()", page)
+        output_picker = page.split("function selectOutput()", 1)[1].split(
+            "function publishMetadata", 1)[0]
+        self.assertNotIn("replaceSource(", output_picker)
+        self.assertIn("function activateRemoteOutput()", page)
+        self.assertIn("if(remoteConnected())activateRemoteOutput()", page)
+        self.assertIn("audio.remote.onconnect=()=>{showOutputState();activateRemoteOutput()", page)
         self.assertNotIn("Sonos appears here when it supports AirPlay", page)
         self.assertNotIn("Choose a Cast or remote playback device", page)
         self.assertIn("state.output_stream", page)
