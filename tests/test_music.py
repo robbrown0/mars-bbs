@@ -359,8 +359,14 @@ class MusicTests(unittest.TestCase):
         self.assertNotIn("Sonos appears here when it supports AirPlay", page)
         self.assertNotIn("Choose a Cast or remote playback device", page)
         self.assertIn("state.output_stream", page)
-        self.assertIn("function resumeOrPlay()", page)
+        self.assertIn("async function resumeOrPlay()", page)
         self.assertIn("serverAction==='stop')&&currentTrack", page)
+        resume = page.split("async function resumeOrPlay()", 1)[1].split(
+            "enable.onclick", 1)[0]
+        self.assertLess(resume.index("beginPlayback()"),
+                        resume.index("navigate('/api/resume'"))
+        self.assertIn("Promise.all([playback,command])", resume)
+        self.assertIn("!enable.classList.contains('attention')", page)
         self.assertIn("navigate('/api/pause','',true)", page)
         self.assertIn("navigate('/api/stop','',true)", page)
         self.assertNotIn("Pausing playback…", page)
