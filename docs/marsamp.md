@@ -47,6 +47,12 @@ The selected speaker keeps the same MarsAmp queue, automatic next-track
 advance, shuffle, Back/Next buttons, and page controls. The page must remain
 open because it is still the queue controller.
 
+Opening the Output picker does not reload or interrupt the playing stream.
+MarsAmp switches to the short-lived speaker-safe stream only after the browser
+reports that an AirPlay or Cast target actually connected, preserving the
+current position across that route change. Cancelling the picker leaves local
+playback completely untouched.
+
 The browser control row places Mute, Shuffle, and Output directly beneath
 Play, Stop, and Next. Mute changes only the browser media element, preserves
 the current song and queue, exposes its state to assistive technology, and

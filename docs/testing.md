@@ -327,3 +327,24 @@ Validated on 2026-10-24 for stopped-queue resume and adaptive stream recovery:
   `mars-v2final-music-rollback-pre-resume-buffer-20261024`
 - the consistent pre-deployment database snapshot SHA-256 is
   `ca9a668abe4fb11e0580ae51e7286ccc6bac4fb73927fd60e4914f9819312bb8`
+
+Validated on 2026-10-24 for interruption-free Output picker opening:
+
+- all 82 tests passed in an isolated, network-disabled, read-only container;
+  the generated player JavaScript passed Node syntax validation
+- opening or cancelling the AirPlay/Cast Output picker no longer changes or
+  reloads the active audio source
+- the short-lived speaker capability stream is activated only after WebKit or
+  the W3C Remote Playback API reports an actual remote-device connection; the
+  route transition preserves the current playback position
+- deployed image is
+  `sha256:ff55a105f196480f6adc66a7bcf1dddcdef2ebbb0feedb268f2ba3110ee3dfb8`;
+  deployed `musicd.py` SHA-256 is
+  `cbb75d4af91d8e9d3f4e753e78d2a0d7664bc2b72c2c55d1b666b3906dcbae29`
+- production is healthy with zero restarts, database integrity OK and 26,075
+  available tracks; non-root, read-only, dropped-capability,
+  `no-new-privileges` and loopback-only restrictions remain in place
+- the prior production container is preserved, stopped, as
+  `mars-v2final-music-rollback-pre-output-picker-no-dip-20261024`
+- the consistent pre-deployment database snapshot SHA-256 is
+  `9af12817b6dd5078b0b202f2158619e4c6496ec658a7ff2f519ca9bf9987a9d9`
