@@ -284,7 +284,7 @@ class MusicTests(unittest.TestCase):
         self.assertIn('preload="auto"', page)
         self.assertIn('aria-label="Play">▶ PLAY', page)
         self.assertIn("await audio.play()", page)
-        self.assertIn("Your browser blocked automatic audio", page)
+        self.assertIn("Safari requires one tap to continue audio", page)
         self.assertIn("classList.add('attention')", page)
         self.assertIn("function hideHint(){hint.hidden=true", page)
         self.assertNotIn("Audio enabled. MarsAmp will continue", page)
@@ -384,6 +384,8 @@ class MusicTests(unittest.TestCase):
         self.assertLess(skip.index("audio.src=source"), skip.index("navigate(path,''"))
         self.assertLess(skip.index("beginPlayback()"), skip.index("navigate(path,''"))
         self.assertIn("Promise.all([playback,command])", skip)
+        self.assertIn("useRemote=wantsRemoteOutput()", skip)
+        self.assertIn("if(useRemote)remotePreferred=true", skip)
         self.assertIn("previousStream=previous.stream||''", page)
         self.assertIn("nextOutputStream=next.output_stream||''", page)
         self.assertIn("onclick=()=>skipTrack('/api/previous'", page)
@@ -404,6 +406,14 @@ class MusicTests(unittest.TestCase):
         self.assertIn("audio.addEventListener('stalled',mediaStalled)", page)
         self.assertIn("scheduleRecovery(true)", page)
         self.assertIn("Connection interrupted. Audio will resume automatically.", page)
+        self.assertIn("incomingSerial<serial)return", page)
+        self.assertIn("name==='NotAllowedError'", page)
+        self.assertIn("else{retryPlayback(attempt)}", page)
+        self.assertIn("function confirmLocalOutput()", page)
+        self.assertIn("else confirmLocalOutput()", page)
+        disconnect = page.split("function confirmLocalOutput()", 1)[1].split(
+            "function selectOutput()", 1)[0]
+        self.assertNotIn("replaceSource(", disconnect)
 
     def test_spectrum_is_bounded_cached_and_current_track_only(self) -> None:
         tracks = self.music._search("", 0, 10)["tracks"]
