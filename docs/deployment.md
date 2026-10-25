@@ -43,6 +43,7 @@ Read `secrets/admin_password` locally and log in as `admin`. Protect or rotate t
 | `MARSAMP_NAS01_PATH` | `/srv/music/nas01` | Primary read-only music library on the host |
 | `MARSAMP_UNR01_PATH` | `/srv/music/unr01` | Secondary read-only music library on the host |
 | `MARSAMP_EXTRA_ROOT` | `/srv/music/extra` | Approved root containing optional additional read-only libraries |
+| `MARSAMP_SPECTRUM_CHANNEL_PATH` | `/srv/music/spectrum-channel` | Optional read-only directory containing a generated `spectrum.json` channel playlist |
 | `MARSAMP_PUBLIC_URL` | example HTTPS URL | Public browser pairing and playback path |
 | `MARSAMP_PORT` | `2444` | Loopback-only MarsAmp HTTP listener |
 | `MARSAMP_ARTWORK_USER_AGENT` | Mars Hotel project URL | Meaningful application/contact identity for administrator-triggered MusicBrainz searches |

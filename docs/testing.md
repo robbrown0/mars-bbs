@@ -467,3 +467,29 @@ Validated on 2026-10-24 for Safari/AirPlay navigation race recovery:
   `mars-v2final-music-rollback-pre-airplay-state-race-r2-20261024`
 - the consistent pre-deployment database snapshot SHA-256 is
   `ed323c79a593e499fec2d87d4cee4043e1bffb90a1686cd75ebe81e6778ae679`
+
+Validated on 2026-10-24 for measured browser audio quality:
+
+- all 84 tests passed in an isolated, network-disabled, read-only container;
+  the generated player JavaScript passed Node syntax validation
+- parser-confirmed lossless audio displays `LOSSLESS`; lossy audio displays its
+  measured rounded bitrate, and an unmeasurable file makes no quality claim
+- technical results are cached by track and modification stamp, so ordinary
+  player polling does not repeatedly inspect a NAS file
+- real catalog samples identified an AAC `.m4a` as `256 kbps` and a FLAC file
+  as lossless; container/codec metadata, not the extension alone, is decisive
+- the concurrently deployed Spectrum channel was recovered from the prior
+  production image and preserved: its read-only mount, refresh worker, exact
+  resolver, bounded response and all 309 resolved playlist tracks remain active
+- deployed image is
+  `sha256:810e9b38dd4094ac98e6435d34c11405933b31acc10e750c7bd86e69f676a2d3`;
+  deployed `musicd.py` SHA-256 is
+  `66b518658d045f2c24fec87f734702860f0f1a6c44cedb89f4593caa42f7030c`
+- production is healthy with zero restarts, database integrity OK and 30,021
+  available tracks; non-root, read-only, dropped-capability,
+  `no-new-privileges` and loopback-only restrictions remain in place;
+  unauthenticated state remains HTTP 401
+- the prior production container is preserved, stopped, as
+  `mars-v2final-music-rollback-pre-quality-badge-r2-20261024`
+- the consistent pre-deployment database snapshot SHA-256 is
+  `27aaa3d40f05dc74ee5f1d83037093c92c617a6d65e311c8708c12d528e5b196`

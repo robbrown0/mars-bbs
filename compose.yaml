@@ -670,6 +670,12 @@
           "source": "${MARSAMP_EXTRA_ROOT:-./music/extra}",
           "target": "/music/extra",
           "read_only": true
+        },
+        {
+          "type": "bind",
+          "source": "${MARSAMP_SPECTRUM_CHANNEL_PATH:-./music/spectrum-channel}",
+          "target": "/spectrum-channel",
+          "read_only": true
         }
       ],
       "restart": "unless-stopped",
