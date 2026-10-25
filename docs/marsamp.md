@@ -19,6 +19,7 @@ MarsAmp is disabled in the base Compose deployment. It is enabled with the `musi
 MARSAMP_NAS01_PATH=/srv/music/nas01
 MARSAMP_UNR01_PATH=/srv/music/unr01
 MARSAMP_EXTRA_ROOT=/srv/music/extra
+MARSAMP_SPECTRUM_CHANNEL_PATH=/srv/music/spectrum-channel
 MARSAMP_PUBLIC_URL=https://bbs.example.net/marsamp
 docker compose --profile music config --quiet
 docker compose --profile music up -d music
@@ -28,6 +29,13 @@ Mount both libraries read-only on the Docker host. The service also receives rea
 
 `MARSAMP_EXTRA_ROOT` is a brokered parent directory for sources added later. A host operator first mounts each SMB/NFS library as a read-only child of that directory. A Sysop can then use **Administration → MarsAmp → Add location** and enter a short source name plus that child directory. The service accepts only existing relative directories contained by the approved root. It cannot mount a share, receive storage credentials, or alter files. NAS01 and UNR01 are protected base entries; additional entries can be removed from the catalog without unmounting or deleting their files.
 
+`MARSAMP_SPECTRUM_CHANNEL_PATH` optionally supplies a generated
+`spectrum.json` playlist in the same portable artist/title format as the built-in
+playlist manifest. MarsAmp reads this directory only, reloads the channel every
+five minutes, resolves entries strictly against local catalog tracks and bounds
+large browser responses and queues. The channel file contains no NAS paths or
+streaming credentials; omitting it disables only that optional channel.
+
 Route the path in `MARSAMP_PUBLIC_URL` to the loopback listener at `MARSAMP_PORT` and preserve byte-range requests. TLS must terminate before the listener is exposed publicly. The service rejects a non-HTTPS public URL except for localhost development. Do not publish port 2444 directly to the Internet.
 
 A Sysop grants the historical-style `Music` role to listeners. Only accounts with `music.play` can search, pair, control playback, or read an audio stream. Pairing creates a single-use URL that expires after 90 seconds. Redeeming it creates an opaque, secure, HTTP-only browser cookie backed by a music-only session. It remains usable when a phone suspends or drops the originating SSH connection, stays alive only while the browser polls, and has an absolute eight-hour limit. A Sysop can see and terminate it under **Administration → Sessions**. Re-pairing replaces the account's previous MarsAmp session. Catalog responses and URLs contain opaque numeric track IDs rather than NAS paths.
@@ -35,6 +43,14 @@ A Sysop grants the historical-style `Music` role to listeners. Only accounts wit
 When a listener selects a song without an actively polling browser sink, MarsAmp selects the track and immediately presents a boxed OSC 8 **OPEN MARSAMP IN BROWSER** button. Opening it pairs the browser with the already selected song. The player attempts playback immediately where browser policy permits it. If iPhone, iPad, or another browser blocks audible autoplay, the page highlights a large **PLAY** button that must be tapped once. The plain URL and the explicit `L` link-audio command remain available as fallbacks. SSH provides no standard or safe way for a remote application to force a client browser to open.
 
 The player publishes current title, artist, album, position, per-track album artwork, and play/pause/previous/next actions through the browser Media Session API. Compatible phones and desktop systems can therefore present MarsAmp like a dedicated audio service on the lock screen, notification area, headset controls, or system media panel. Previous/Next are registered in place of ten-second seek actions; the player timeline remains seekable. Because iOS normally shows only a title and one secondary line, MarsAmp publishes that line as `Artist · Album` while retaining the separate album field for clients that render it. Long values are truncated by the operating system. Filename-derived track and disc numbers are removed from presented titles without renaming the audio file or changing its stored catalog identity. Text metadata is committed before artwork so an artwork restriction cannot discard the entire update. The operating system ultimately decides which controls and artwork it displays, and Safari may suppress identifying metadata in Private Browsing. The page also includes installable web-app metadata and appropriately sized local PNG fallback artwork; these public branding assets contain no account or catalog information.
+
+The webpage displays a compact quality badge beneath the album. Parser-confirmed
+lossless tracks show **LOSSLESS**; lossy tracks show their measured average
+bitrate, such as **256 kbps** or **320 kbps**. MarsAmp reads the container and
+codec metadata rather than guessing from the extension, so ALAC and AAC inside
+`.m4a` files are distinguished correctly. Results are cached against the file's
+modification stamp and automatically re-evaluated if that file changes. If the
+format cannot be measured reliably, no quality claim is shown.
 
 The browser player also has an **AIRPLAY / CAST** output button. Safari uses
 Apple's native AirPlay route picker; compatible Chrome-family browsers use the

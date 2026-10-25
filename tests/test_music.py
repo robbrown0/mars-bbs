@@ -141,6 +141,46 @@ class MusicTests(unittest.TestCase):
         self.assertEqual(_display_artist("Guns_N'_Roses"), "Guns N' Roses")
         self.assertEqual(_display_album("Greatest_Hits_[Explicit]"), "Greatest Hits")
 
+    def test_track_quality_uses_parser_measurements_and_file_stamp_cache(self) -> None:
+        mp3 = int(self.music._search("Track One", 0, 10)["tracks"][0]["id"])
+        measured = SimpleNamespace(
+            bitrate=319.6, is_lossless=False,
+            mime_type='audio/mpeg',
+        )
+        with patch("marsv2.musicd.TinyTag.get", return_value=measured) as parser:
+            self.assertEqual(
+                self.music.track_quality(mp3),
+                {"label": "320 kbps", "lossless": False},
+            )
+            self.assertEqual(
+                self.music.track_quality(mp3),
+                {"label": "320 kbps", "lossless": False},
+            )
+        parser.assert_called_once_with(
+            str(self.nas01 / "Artist One" / "Album One" / "Track One.mp3"),
+            image=False, duration=True,
+        )
+        self.music.playback[IDENTITY["account_id"]] = {
+            "serial": 1, "action": "play", "resume": False,
+            "track_id": mp3, "queue": [mp3], "mode": "sequential",
+            "history": [], "shuffle_bag": [],
+        }
+        self.assertEqual(
+            self.music.state(IDENTITY["account_id"])["track"]["quality"],
+            {"label": "320 kbps", "lossless": False},
+        )
+
+        flac = int(self.music._search("Local", 0, 10)["tracks"][0]["id"])
+        lossless = SimpleNamespace(
+            bitrate=917.4, is_lossless=True,
+            mime_type='audio/flac',
+        )
+        with patch("marsv2.musicd.TinyTag.get", return_value=lossless):
+            self.assertEqual(
+                self.music.track_quality(flac),
+                {"label": "LOSSLESS", "lossless": True},
+            )
+
     def test_canonical_metadata_is_separate_and_invalidates_when_file_changes(self) -> None:
         raw = self.music.db.execute(
             "SELECT id,title,modified_ns FROM tracks WHERE title='Track One'"
@@ -298,6 +338,10 @@ class MusicTests(unittest.TestCase):
         self.assertIn("/api/artwork/", page)
         self.assertIn("track.artwork_url", page)
         self.assertIn('id="cover"', page)
+        self.assertIn('id="quality" class="quality" hidden', page)
+        self.assertIn("function showQuality(track)", page)
+        self.assertIn("qualityEl.classList.toggle('lossless'", page)
+        self.assertIn("const track=state.track;showQuality(track)", page)
         self.assertIn("reader.readAsDataURL(blob)", page)
         self.assertIn("image.sizes='any'", page)
         self.assertIn("mediaArtworkData||ART512", page)
@@ -528,6 +572,25 @@ class MusicTests(unittest.TestCase):
         self.assertEqual([row["title"] for row in selected["tracks"]],
                          ["Track Two", "Track One"])
         self.assertNotIn("relative_path", repr(selected))
+
+    def test_optional_spectrum_channel_is_loaded_from_read_only_manifest(self) -> None:
+        base = self.music._load_playlists(str(self.playlists_file))
+        channel = [{
+            "slug": "the-spectrum", "name": "The Spectrum — Channel",
+            "description": "Generated local-catalog rotation.",
+            "position": 0, "dynamic": "",
+            "tracks": [{
+                "artists": ["Artist One"], "title": "Track One", "album": "",
+            }],
+        }]
+        with patch("marsv2.musicd.os.path.exists", return_value=True), \
+                patch.object(self.music, "_load_playlists",
+                             side_effect=[base, channel]):
+            self.music._refresh_playlists()
+        opened = self.music.playlist_tracks("the-spectrum", 0, 20)
+        self.assertEqual(opened["playlist"]["name"], "The Spectrum — Channel")
+        self.assertEqual(opened["total"], 1)
+        self.assertEqual(opened["tracks"][0]["title"], "Track One")
 
     def test_shipped_playlist_manifest_has_nineteen_curated_lists_and_dynamic_all(self) -> None:
         filename = Path(__file__).resolve().parents[1] / "assets" / "music-playlists.json"

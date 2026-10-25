@@ -13,6 +13,7 @@ import hashlib
 import hmac
 import http.cookies
 import json
+import logging
 import os
 import re
 import secrets
@@ -129,6 +130,14 @@ CREATE TABLE IF NOT EXISTS track_metadata (
 );
 CREATE INDEX IF NOT EXISTS track_metadata_source
   ON track_metadata(source_type,confidence);
+CREATE TABLE IF NOT EXISTS track_technical (
+  track_id INTEGER PRIMARY KEY REFERENCES tracks(id) ON DELETE CASCADE,
+  file_modified_ns INTEGER NOT NULL,
+  bitrate_kbps INTEGER NOT NULL DEFAULT 0 CHECK(bitrate_kbps>=0),
+  lossless INTEGER NOT NULL DEFAULT 0 CHECK(lossless IN (0,1)),
+  codec TEXT NOT NULL DEFAULT '',
+  analyzed_at INTEGER NOT NULL
+);
 CREATE TABLE IF NOT EXISTS track_metadata_audit (
   id INTEGER PRIMARY KEY,
   track_id INTEGER NOT NULL,
@@ -353,6 +362,7 @@ class Music:
         self.artwork_signing_key = secrets.token_bytes(32)
         self.stream_signing_key = secrets.token_bytes(32)
         self.artwork_search_at = 0.0
+        self.playlists_file = playlists_file
         self.playlist_definitions = self._load_playlists(playlists_file)
         self.dynamic_playlists = {
             str(item["slug"]): str(item.get("dynamic", ""))
@@ -398,7 +408,7 @@ class Music:
                     or len(description) > 240 or dynamic not in ("", DYNAMIC_ALL)
                     or (dynamic and tracks not in (None, []))
                     or (not dynamic and (not isinstance(tracks, list)
-                                         or not 1 <= len(tracks) <= MAX_RESULTS))):
+                                         or not 1 <= len(tracks) <= 10000))):
                 raise RuntimeError("curated playlist entry is invalid")
             clean_tracks: list[dict[str, object]] = []
             for track in tracks or []:
@@ -464,6 +474,15 @@ class Music:
     def _refresh_playlists(self) -> None:
         """Resolve portable artist/title definitions against this host's catalog."""
         with self.lock:
+            base = self._load_playlists(self.playlists_file)
+            channel_file = "/spectrum-channel/spectrum.json"
+            if os.path.exists(channel_file):
+                extra = self._load_playlists(channel_file)
+                slugs = {p["slug"] for p in base}
+                base.extend(p for p in extra if p["slug"] not in slugs)
+                for position, entry in enumerate(base):
+                    entry["position"] = position
+            self.playlist_definitions = base
             available = self.db.execute(
                 "SELECT " + CATALOG_COLUMNS + CATALOG_JOIN + "WHERE t.available=1"
             ).fetchall()
@@ -480,10 +499,15 @@ class Music:
                     matching_rows: list[sqlite3.Row] = []
                     for artist in wanted["artists"]:
                         matching_rows.extend(by_artist.get(_music_key(str(artist)), []))
-                    candidates = [(self._playlist_match(row, wanted), int(row["id"]))
+                    candidates = [((100 if _music_key(str(row["raw_title"])) ==
+                                    _music_key(str(wanted["title"])) else -1)
+                                   if playlist["slug"] == "the-spectrum"
+                                   else self._playlist_match(row, wanted), int(row["id"]))
                                   for row in matching_rows]
                     candidates = [item for item in candidates
-                                  if item[0] >= 0 and item[1] not in used]
+                                  if item[0] >= (100 if playlist["slug"] ==
+                                                 "the-spectrum" else 0)
+                                  and item[1] not in used]
                     if candidates:
                         _, track_id = max(candidates, key=lambda item: (item[0], -item[1]))
                         resolved.append((str(playlist["slug"]), track_id, position))
@@ -982,9 +1006,18 @@ class Music:
         public_playlist = dict(playlist)
         if dynamic:
             public_playlist["dynamic"] = dynamic
+        public_tracks = [_public_row(row) for row in rows]
+        if slug == "the-spectrum":
+            public_tracks = [
+                {key: track[key] for key in ("id", "title", "artist", "album")}
+                for track in public_tracks
+            ]
+            while len(json.dumps(public_tracks, ensure_ascii=True)) > 48000:
+                public_tracks.pop()
         return {"playlist": public_playlist,
-                "tracks": [_public_row(row) for row in rows],
-                "total": total, "offset": offset, "next_offset": offset + len(rows)}
+                "tracks": public_tracks,
+                "total": total, "offset": offset,
+                "next_offset": offset + len(public_tracks)}
 
     def _public_track(self, track_id: int) -> dict[str, object]:
         with self.lock:
@@ -994,6 +1027,56 @@ class Music:
         if row is None:
             raise RPCError("track unavailable")
         return _public_row(row)
+
+    @staticmethod
+    def _quality_label(row: sqlite3.Row | dict[str, object]) -> dict[str, object]:
+        if bool(row["lossless"]):
+            return {"label": "LOSSLESS", "lossless": True}
+        bitrate = int(row["bitrate_kbps"])
+        if bitrate > 0:
+            return {"label": f"{bitrate} kbps", "lossless": False}
+        return {}
+
+    def track_quality(self, track_id: int) -> dict[str, object]:
+        """Return cached, parser-confirmed quality without exposing file details."""
+        row, filename = self._track_file(track_id)
+        modified_ns = int(row["modified_ns"])
+        with self.lock:
+            cached = self.db.execute(
+                "SELECT bitrate_kbps,lossless FROM track_technical "
+                "WHERE track_id=? AND file_modified_ns=?",
+                (track_id, modified_ns),
+            ).fetchone()
+        if cached is not None:
+            return self._quality_label(cached)
+
+        bitrate = 0
+        lossless = False
+        codec = ""
+        try:
+            tag = TinyTag.get(filename, image=False, duration=True)
+            measured = float(getattr(tag, "bitrate", 0) or 0)
+            if 1 <= measured <= 100000:
+                bitrate = int(round(measured))
+            lossless = bool(getattr(tag, "is_lossless", False))
+            codec = _tag_text(getattr(tag, "mime_type", ""), 96)
+        except (OSError, TinyTagException, TypeError, ValueError):
+            # Cache an unavailable result until the file changes. Repeated page
+            # polling must never repeatedly parse a malformed or unsupported file.
+            pass
+        with self.lock:
+            self.db.execute(
+                "INSERT INTO track_technical(track_id,file_modified_ns,bitrate_kbps,"
+                "lossless,codec,analyzed_at) VALUES(?,?,?,?,?,?) "
+                "ON CONFLICT(track_id) DO UPDATE SET "
+                "file_modified_ns=excluded.file_modified_ns,"
+                "bitrate_kbps=excluded.bitrate_kbps,lossless=excluded.lossless,"
+                "codec=excluded.codec,analyzed_at=excluded.analyzed_at",
+                (track_id, modified_ns, bitrate, int(lossless), codec, int(time.time())),
+            )
+        return self._quality_label({
+            "bitrate_kbps": bitrate, "lossless": int(lossless),
+        })
 
     def _track_file(self, track_id: int) -> tuple[sqlite3.Row, str]:
         with self.lock:
@@ -1462,6 +1545,7 @@ class Music:
         if track_id:
             try:
                 state["track"] = self._public_track(track_id)
+                state["track"]["quality"] = self.track_quality(track_id)
                 state["track"]["artwork_version"] = self.artwork_version(track_id)
                 state["track"]["artwork_url"] = self.artwork_capability(
                     track_id, str(state["track"]["artwork_version"]))
@@ -1502,6 +1586,16 @@ class Music:
                 queue.append(track_id)
         if selected not in queue:
             queue.insert(0, selected)
+        if len(queue) >= 10:
+            for playlist in self.playlist_definitions:
+                if playlist["slug"] != "the-spectrum":
+                    continue
+                full = [int(row[0]) for row in self.db.execute(
+                    "SELECT pt.track_id FROM playlist_tracks pt JOIN tracks t "
+                    "ON t.id=pt.track_id WHERE pt.playlist_slug=? AND t.available=1 "
+                    "ORDER BY pt.position", (playlist["slug"],))]
+                if full[:len(queue)] == queue:
+                    return full
         return queue
 
     @staticmethod
@@ -1666,7 +1760,8 @@ class Music:
                 "total": len(queue),
                 "current": current_track,
                 "recent": list(reversed(self._queue_tracks(history[-12:]))),
-                "up_next": self._queue_tracks(upcoming),
+                "up_next": self._queue_tracks(
+                    upcoming[:50] if len(queue) > 150 else upcoming[:MAX_RESULTS]),
             }
 
     def _random_available(self, excluded: list[int]) -> int:
@@ -2036,7 +2131,7 @@ background:linear-gradient(155deg,rgba(25,33,60,.98),rgba(10,12,25,.98));box-sha
 header{display:flex;align-items:center;justify-content:space-between;padding:18px 20px;border-bottom:1px solid var(--line)}
 .brand{color:var(--blue);font-weight:900;letter-spacing:.16em;font-size:1.18rem}.live{color:var(--green);font-size:.72rem;letter-spacing:.12em;border:1px solid #39e69d55;border-radius:999px;padding:6px 10px}
 .stage{display:grid;grid-template-columns:190px 1fr;gap:24px;padding:24px}.art{aspect-ratio:1;border-radius:20px;background:#0c1020;box-shadow:0 14px 34px #0009,0 0 22px #2d9cff35;border:1px solid #5870a4;overflow:hidden}.art img{display:block;width:100%;height:100%;object-fit:cover}
-.now{min-width:0;display:flex;flex-direction:column;justify-content:center}.eyebrow{color:var(--green);letter-spacing:.14em;font-size:.72rem;margin-bottom:10px}.title{font:800 clamp(1.35rem,4vw,2.2rem)/1.12 system-ui,sans-serif;overflow-wrap:anywhere}.artist{margin-top:9px;color:#cbd4e9;font:600 1rem system-ui,sans-serif}.album{margin-top:5px;color:var(--muted);font:.88rem system-ui,sans-serif}
+.now{min-width:0;display:flex;flex-direction:column;justify-content:center}.eyebrow{color:var(--green);letter-spacing:.14em;font-size:.72rem;margin-bottom:10px}.title{font:800 clamp(1.35rem,4vw,2.2rem)/1.12 system-ui,sans-serif;overflow-wrap:anywhere}.artist{margin-top:9px;color:#cbd4e9;font:600 1rem system-ui,sans-serif}.album{margin-top:5px;color:var(--muted);font:.88rem system-ui,sans-serif}.quality{align-self:flex-start;margin-top:9px;padding:4px 7px;border:1px solid #47a9ff66;border-radius:5px;color:#84c8ff;background:#47a9ff0d;font:750 .64rem ui-monospace,monospace;letter-spacing:.08em}.quality.lossless{color:var(--green);border-color:#39e69d66;background:#39e69d0d}
 .timeline{padding:0 24px 6px}.time-row{display:flex;align-items:center;gap:12px;color:var(--muted);font-size:.75rem}.time-row output{width:46px}.time-row output:last-child{text-align:right}input[type=range]{width:100%;accent-color:var(--green)}
 .meter{height:36px;display:flex;gap:4px;align-items:end;margin:10px 0}.meter i{flex:1;max-width:18px;background:linear-gradient(var(--green),var(--blue));height:10%;border-radius:3px 3px 0 0;transition:height 80ms linear}
 .controls{display:grid;grid-template-columns:repeat(5,1fr);gap:9px;padding:14px 24px 20px}button{appearance:none;border:1px solid #465b8d;border-radius:13px;background:#171f39;color:var(--white);font:700 .82rem ui-monospace,monospace;padding:13px 8px;min-height:48px;box-shadow:0 5px 14px #0005;touch-action:manipulation}button:active{transform:translateY(1px);background:#223052}button.primary{color:#07120e;background:linear-gradient(135deg,#55f0ad,#2dcf82);border-color:#8dffd0;font-size:1rem}button.danger{color:#ffc7c7}button.attention{animation:pulse 1.2s steps(2,end) infinite}button.connected{color:#07120e;background:linear-gradient(135deg,#55f0ad,#47a9ff);border-color:#b7ffe2}
@@ -2050,6 +2145,7 @@ details{border-top:1px solid var(--line);background:#0b0f1d}summary{cursor:point
 <section class="stage"><div class="art"><img id="cover" src="artwork-512.png" alt="Current album artwork"></div><div class="now">
 <div class="eyebrow">NOW TRANSMITTING</div><div id="title" class="title">Waiting for a selection…</div>
 <div id="artist" class="artist">The Mars Hotel BBS</div><div id="album" class="album">Authenticated private player</div>
+<div id="quality" class="quality" hidden></div>
 <div class="meter" id="meter" aria-hidden="true"></div></div></section>
 <section class="timeline"><div class="time-row"><output id="elapsed">0:00</output><input id="seek" type="range" min="0" max="1000" value="0" aria-label="Playback position"><output id="duration">0:00</output></div></section>
 <section class="controls" aria-label="Playback controls">
@@ -2068,7 +2164,7 @@ const BASE=__BASE__;const ART192=new URL(BASE+'/artwork-192.png',location.origin
 const audio=document.getElementById('audio'),meter=document.getElementById('meter');
 const enable=document.getElementById('enable'),hint=document.getElementById('hint');
 const titleEl=document.getElementById('title');
-const artistEl=document.getElementById('artist'),albumEl=document.getElementById('album');
+const artistEl=document.getElementById('artist'),albumEl=document.getElementById('album'),qualityEl=document.getElementById('quality');
 const seek=document.getElementById('seek'),elapsed=document.getElementById('elapsed');
 const durationEl=document.getElementById('duration'),queueEl=document.getElementById('queue');
 const queueSummary=document.getElementById('queue-summary'),queueMeta=document.getElementById('queue-meta');
@@ -2118,6 +2214,7 @@ function replaceSource(source,position,wasPlaying){if(!source||sameSource(source
 function showOutputState(){const connected=remoteConnected();output.classList.toggle('connected',connected);if(connected)output.disabled=false;outputLabel.textContent=connected?'CONNECTED':'OUTPUT';output.title=connected?'Remote speaker connected':'Choose an AirPlay or Cast speaker';output.setAttribute('aria-label',output.title)}
 function showModeState(state){currentMode=String(state.mode||'sequential');modeLocked=Boolean(state.scope);const active=currentMode==='shuffle';shuffle.classList.toggle('active',active);shuffle.setAttribute('aria-pressed',String(active));shuffleLabel.textContent=active?'SHUFFLE ON':'SHUFFLE OFF';shuffle.title=modeLocked?'Full-library playback always shuffles':active?'Turn shuffle off':'Turn shuffle on';shuffle.setAttribute('aria-label',shuffle.title)}
 function showMuteState(){const active=audio.muted;mute.classList.toggle('active',active);mute.setAttribute('aria-pressed',String(active));muteLabel.textContent=active?'UNMUTE':'MUTE';mute.title=active?'Unmute audio':'Mute audio';mute.setAttribute('aria-label',mute.title)}
+function showQuality(track){const quality=track&&track.quality||{},label=text(quality.label);qualityEl.hidden=!label;qualityEl.textContent=label;qualityEl.classList.toggle('lossless',Boolean(quality.lossless))}
 function activateRemoteOutput(){if(!currentTrack||!outputStream)return;remotePreferred=true;if(remoteDisconnectTimer)clearTimeout(remoteDisconnectTimer);remoteDisconnectTimer=0;const position=audio.currentTime,wasPlaying=!audio.paused;requestCachedSpectrum(currentTrack);replaceSource(outputStream,position,wasPlaying)}
 function confirmLocalOutput(){if(remoteDisconnectTimer)clearTimeout(remoteDisconnectTimer);remoteDisconnectTimer=setTimeout(()=>{remoteDisconnectTimer=0;if(remoteConnected())return;remotePreferred=false;showOutputState();bars(!audio.paused)},2500)}
 function selectOutput(){if(!currentTrack||!outputStream){showHint('Choose a song before selecting a speaker.');return}try{if(typeof audio.webkitShowPlaybackTargetPicker==='function'){hideHint();audio.webkitShowPlaybackTargetPicker();return}if(audio.remote&&typeof audio.remote.prompt==='function'){hideHint();audio.remote.prompt().then(showOutputState).catch(error=>{showOutputState();if(error&&error.name!=='NotAllowedError')showHint('No compatible Cast or remote speaker was found.')});return}}catch(error){}showHint('This browser has no webpage speaker picker. Use its system AirPlay or Cast menu.')}
@@ -2133,7 +2230,7 @@ function queueRow(track,index,current=false){const item=document.createElement('
 async function loadQueue(){try{const response=await fetch(BASE+'/api/queue',{cache:'no-store'});if(response.status===401){sessionEnded();return}if(!response.ok)throw new Error('queue unavailable');const data=await response.json();queueEl.replaceChildren();queueSummary.textContent=(data.label||'QUEUE')+' · '+Number(data.total||0).toLocaleString()+' tracks';
 if(data.dynamic){queueMeta.textContent='Full-library shuffle selects each next track directly from the live catalog.';if(data.current)queueEl.append(queueRow(data.current,0,true));const waiting=document.createElement('li');waiting.textContent='∞ Next selection is drawn when playback advances.';queueEl.append(waiting)}else{queueMeta.textContent=(data.mode||'sequential').toUpperCase()+' · upcoming playback order';if(data.current)queueEl.append(queueRow(data.current,0,true));(data.up_next||[]).forEach((track,index)=>queueEl.append(queueRow(track,index+1)))}
 }catch(error){queueSummary.textContent='QUEUE · temporarily unavailable'}}
-async function applyState(state){const incomingSerial=Number(state.serial);if(Number.isFinite(incomingSerial)&&serial>=0&&incomingSerial<serial)return;serverAction=state.action||'stop';localStream=state.stream||'';outputStream=state.output_stream||'';const navigation=state.navigation||{},previous=navigation.previous||{},next=navigation.next||{};previousStream=previous.stream||'';previousOutputStream=previous.output_stream||'';nextStream=next.stream||'';nextOutputStream=next.output_stream||'';const track=state.track;if(track){titleEl.textContent=text(track.title)||'Untitled';artistEl.textContent=text(track.artist)||'Unknown artist';albumEl.textContent=text(track.album)||'The Mars Hotel collection';updateMetadata(track)}else if(serverAction==='stop'){currentTrack=null;metadataKey='';mediaArtworkData='';mediaArtworkType='';resetCachedSpectrum();coverEl.src=ART512;titleEl.textContent='MarsAmp ready';artistEl.textContent='Choose a song in the BBS';albumEl.textContent='';document.title='MarsAmp';audio.pause();audio.removeAttribute('src');audio.load();elapsed.value='0:00';durationEl.value='0:00';seek.value=0}showModeState(state);
+async function applyState(state){const incomingSerial=Number(state.serial);if(Number.isFinite(incomingSerial)&&serial>=0&&incomingSerial<serial)return;serverAction=state.action||'stop';localStream=state.stream||'';outputStream=state.output_stream||'';const navigation=state.navigation||{},previous=navigation.previous||{},next=navigation.next||{};previousStream=previous.stream||'';previousOutputStream=previous.output_stream||'';nextStream=next.stream||'';nextOutputStream=next.output_stream||'';const track=state.track;showQuality(track);if(track){titleEl.textContent=text(track.title)||'Untitled';artistEl.textContent=text(track.artist)||'Unknown artist';albumEl.textContent=text(track.album)||'The Mars Hotel collection';updateMetadata(track)}else if(serverAction==='stop'){currentTrack=null;metadataKey='';mediaArtworkData='';mediaArtworkType='';resetCachedSpectrum();coverEl.src=ART512;titleEl.textContent='MarsAmp ready';artistEl.textContent='Choose a song in the BBS';albumEl.textContent='';document.title='MarsAmp';audio.pause();audio.removeAttribute('src');audio.load();elapsed.value='0:00';durationEl.value='0:00';seek.value=0}showModeState(state);
 if(incomingSerial!==serial){serial=incomingSerial;if(state.action==='play'&&state.stream){clearRecovery(true);const source=wantsRemoteOutput()&&outputStream?outputStream:localStream;if(!state.resume||!audio.src||!sameSource(source))audio.src=source;await beginPlayback()}else if(state.action==='pause'){clearRecovery();audio.pause();enable.textContent='▶ PLAY'}else if(state.action==='stop'){clearRecovery(true);audio.pause();const source=wantsRemoteOutput()&&outputStream?outputStream:localStream;if(track&&source&&!sameSource(source)){audio.src=source;audio.load()}try{audio.currentTime=0}catch(error){}updatePosition();enable.textContent='▶ PLAY';bars(false);setMediaState('paused')}await loadQueue()}bars(!audio.paused);showOutputState()}
 async function navigate(path,label,quiet=false){if(label)showHint(label);try{const response=await fetch(BASE+path,{method:'POST',credentials:'same-origin'});if(response.status===401){sessionEnded();return null}if(!response.ok)throw new Error('request failed');const state=await response.json();await applyState(state);if(quiet&&!enable.classList.contains('attention')&&!recoveryNotice)hideHint();return state}catch(error){showHint('Unable to change songs. Check the connection.');return null}}
 async function poll(){try{const response=await fetch(BASE+'/api/state',{cache:'no-store'});if(response.status===401){sessionEnded();return}await applyState(await response.json());setTimeout(poll,750)}catch(error){setTimeout(poll,2000)}}
@@ -2481,6 +2578,16 @@ def main() -> None:
     music = Music(args.db, args.session_socket, sources, args.public_url, args.extra_root,
                   args.playlists_file)
     MusicHTTP.music = music
+    def channel_refresh() -> None:
+        while True:
+            time.sleep(300)
+            try:
+                music._refresh_playlists()
+                if time.time() - music.last_scan > 3600:
+                    music.start_scan()
+            except Exception:
+                logging.exception("Channel refresh failed; retrying")
+    threading.Thread(target=channel_refresh, name="channel-refresh", daemon=True).start()
     if args.scan_on_start:
         music.start_scan()
     threading.Thread(target=serve, args=(args.socket, music.handle),
